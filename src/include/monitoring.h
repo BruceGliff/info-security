@@ -9,11 +9,11 @@ class monitor {
   std::vector<std::string>::const_iterator m_PreferedIface{};
 
   void SelectPreferedIface();
-  void CheckPreferedIface() const;
-  void SetIfaceDown() const;
+  bool CheckIfaceForValue(std::string const &iface, int value) const;
   void SetMonitor() const;
-  void SetIfaceUp() const;
-  void SetIface(char const *) const;
+  void SetIfaceDown(std::string const &iface) const;
+  void SetIfaceUp(std::string const &iface) const;
+  void SetIface(std::string const &iface, char const *) const;
 
 public:
   monitor();
