@@ -190,3 +190,5 @@ monitor::~monitor() {
 
   SetIfaceUp(*m_PreferedIface);
 }
+
+char const *monitor::GetIface() const { return m_PreferedIface->c_str(); }

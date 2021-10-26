@@ -23,5 +23,7 @@ public:
   monitor const &operator=(monitor const &) = delete;
   monitor const &operator=(monitor &&) = delete;
 
+  char const *GetIface() const;
+
   ~monitor();
 };
