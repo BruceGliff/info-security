@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <errno.h>
 #include <signal.h>
 
 // it is from library
@@ -157,7 +158,7 @@ static struct local_options
 	int show_wps;
 	//struct tm gps_time; /* the timestamp from the gps data */
 //#ifdef CONFIG_LIBNL
-//	unsigned int htval;
+	unsigned int htval;
 //#endif
 	int background_mode;
 
@@ -256,16 +257,72 @@ static void sighandler(int signum)
 		fflush(stdout);
 	}
 }
+#define PROBE_REQ "\x40\x00\x00\x00\xFF\xFF\xFF\xFF\xFF\xFF\xCC\xCC\xCC\xCC\xCC\xCC" "\xFF\xFF\xFF\xFF\xFF\xFF\x00\x00"
+#define RATES "\x01\x04\x02\x04\x0B\x16\x32\x08\x0C\x12\x18\x24\x30\x48\x60\x6C"
+#define LINKTYPE_IEEE802_11 105//DLT_IEEE802_11
+static inline uint8_t rand_u8(void)
+{
+	// coverity[dont_call]
+	return (uint8_t)(
+		rand()
+		& 0xFFU); // NOLINT(cert-msc30-c,cert-msc50-cpp,hicpp-signed-bitwise)
+}
+static int send_probe_request(struct wif * wi)
+{
+	int len;
+	uint8_t p[4096], r_smac[6];
 
+	memcpy(p, PROBE_REQ, 24);
+
+	len = 24;
+
+	p[24] = 0x00; // ESSID Tag Number
+	p[25] = 0x00; // ESSID Tag Length
+
+	len += 2;
+
+	memcpy(p + len, RATES, 16);
+
+	len += 16;
+
+	r_smac[0] = 0x00;
+	r_smac[1] = rand_u8();
+	r_smac[2] = rand_u8();
+	r_smac[3] = rand_u8();
+	r_smac[4] = rand_u8();
+	r_smac[5] = rand_u8();
+
+	memcpy(p + 10, r_smac, 6);
+
+	if (wi->wi_write(wi, NULL, LINKTYPE_IEEE802_11, p, len, NULL) == -1)
+	{
+		switch (errno)
+		{
+			case EAGAIN:
+			case ENOBUFS:
+				usleep(10000);
+				return (0); /* XXX not sure I like this... -sorbo */
+			default:
+				break;
+		}
+
+		perror("wi_write()");
+		return (-1);
+	}
+
+	return (0);
+}
 static void
 channel_hopper(struct wif * wi, int if_num, int chan_count, pid_t parent)
 {
+  printf("hopper\n");
 	int ch, ch_idx = 0, card = 0, chi = 0, cai = 0, j = 0, k = 0, first = 1,
 			again;
 	int dropped = 0;
 
 	while (0 == kill(parent, 0))
 	{
+    printf("ASD\n");
 		for (j = 0; j < if_num; j++)
 		{
 			again = 1;
@@ -307,7 +364,9 @@ channel_hopper(struct wif * wi, int if_num, int chan_count, pid_t parent)
 				dropped++;
 				if (dropped >= chan_count)
 				{
-					ch = wi_get_channel(wi[card]);
+          assert(card == 0); // it is because i have only wi
+					//ch = wi_get_channel(wi[card]);
+          ch = wi->wi_get_channel(wi);
 					lopt.channel[card] = ch;
 					write(lopt.cd_pipe[1], &card, sizeof(int));
 					write(lopt.ch_pipe[1], &ch, sizeof(int));
@@ -322,14 +381,15 @@ channel_hopper(struct wif * wi, int if_num, int chan_count, pid_t parent)
 			ch = lopt.channels[ch_idx];
 
 //#ifdef CONFIG_LIBNL
-			if (wi_set_ht_channel(wi[card], ch, lopt.htval) == 0)
+			//if (wi_set_ht_channel(wi[card], ch, lopt.htval) == 0)
+      if (wi->wi_set_ht_channel(wi, ch, lopt.htval) == 0)
 //#else
 
 			{
 				lopt.channel[card] = ch;
 				write(lopt.cd_pipe[1], &card, sizeof(int));
 				write(lopt.ch_pipe[1], &ch, sizeof(int));
-				if (lopt.active_scan_sim > 0) send_probe_request(wi[card]);
+				if (lopt.active_scan_sim > 0) /*send_probe_request(wi[card])*/send_probe_request(wi);
 				kill(parent, SIGUSR1);
 				usleep(1000);
 			}
@@ -361,7 +421,7 @@ channel_hopper(struct wif * wi, int if_num, int chan_count, pid_t parent)
 
 void scanner::launch() {
   int fd_raw = wi->wi_fd(wi);
-  int fdh = fd_raw > fdh ? fd_raw : 0;
+  int fdh = fd_raw > 0 ? fd_raw : 0;
   int chan_count = getchancount(0);
 
   pid_t main_pid = getpid();
@@ -404,7 +464,7 @@ void scanner::launch() {
     channel_hopper(wi, lopt.num_cards, chan_count, main_pid);
     exit(EXIT_FAILURE);
   }
-
+  // printf("parent");
 
 }
 
@@ -558,8 +618,6 @@ static void nl80211_cleanup(struct nl80211_state * state)
 	nl_socket_free(state->nl_sock);
 }
 static void linux_close_nl80211(struct wif *wi) {
-  printf("placeholder linux_close_nl80211\n");
-
 	struct priv_linux * pl = (priv_linux *)wi->wi_priv;
 	nl80211_cleanup(&state);
 
@@ -892,7 +950,6 @@ wif *scanner::open(char const *iface) {
     do_free(wi);
     return NULL;
   }
-  printf("Opened\n");
   strncpy(wi->wi_interface, iface, sizeof(wi->wi_interface) - 1);
 	wi->wi_interface[sizeof(wi->wi_interface) - 1] = 0;
   return wi;
