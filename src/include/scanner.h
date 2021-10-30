@@ -7,6 +7,8 @@ class scanner {
 
   static wif *open(char const *);
 
+  void launch();
+
 public:
   scanner(char const *);
 };

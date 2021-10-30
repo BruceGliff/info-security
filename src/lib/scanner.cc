@@ -14,7 +14,9 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
+#include <signal.h>
 
 // it is from library
 #include <linux/genetlink.h>
@@ -25,7 +27,391 @@
 #include <netlink/genl/genl.h>
 #include <netlink/msg.h>
 
-scanner::scanner(char const *iface) : wi{open(iface)} {}
+#define MAX_CARDS 8
+
+static int bg_chans[] = {1, 7, 13, 2, 8, 3, 14, 9, 4, 10, 5, 11, 6, 12, 0};
+static struct local_options
+{
+	//struct AP_info *ap_1st, *ap_end;
+	//struct ST_info *st_1st, *st_end;
+	//struct NA_info * na_1st;
+	//struct oui * manufList;
+
+	unsigned char prev_bssid[6];
+	char ** f_essid;
+	int f_essid_count;
+//#ifdef HAVE_PCRE
+//	pcre * f_essid_regex;
+//#endif
+	char * dump_prefix;
+	char * keyout;
+
+	char * batt; /* Battery string       */
+	int channel[MAX_CARDS]; /* current channel #    */
+	int frequency[MAX_CARDS]; /* current frequency #    */
+	int ch_pipe[2]; /* current channel pipe */
+	int cd_pipe[2]; /* current card pipe    */
+	int gc_pipe[2]; /* gps coordinates pipe */
+	float gps_loc[8]; /* gps coordinates      */
+	int save_gps; /* keep gps file flag   */
+	int gps_valid_interval; /* how many seconds until we consider the GPS data invalid if we dont get new data */
+
+	int * channels;
+	int singlechan; /* channel hopping set 1*/
+	int singlefreq; /* frequency hopping: 1 */
+	int chswitch; /* switching method     */
+	unsigned int f_encrypt; /* encryption filter    */
+	int update_s; /* update delay in sec  */
+
+	volatile int do_exit; /* interrupt flag       */
+	//struct winsize ws; /* console window size  */
+
+	char * elapsed_time; /* capture time			*/
+
+	int one_beacon; /* Record only 1 beacon?*/
+
+	int * own_channels; /* custom channel list  */
+	int * own_frequencies; /* custom frequency list  */
+
+	int asso_client; /* only show associated clients */
+
+	unsigned char wpa_bssid[6]; /* the wpa handshake bssid   */
+	char message[512];
+	char decloak;
+
+	char is_berlin; /* is the switch --berlin set? */
+	int numaps; /* number of APs on the current list */
+	int maxnumaps; /* maximum nubers of APs on the list */
+	int maxaps; /* number of all APs found */
+	int berlin; /* number of seconds it takes in berlin to fill the whole screen
+				   with APs*/
+	/*
+	 * The name for this option may look quite strange, here is the story behind
+	 * it:
+	 * During the CCC2007, 10 august 2007, we (hirte, Mister_X) went to visit
+	 * Berlin
+	 * and couldn't resist to turn on airodump-ng to see how much access point
+	 * we can
+	 * get during the trip from Finowfurt to Berlin. When we were in Berlin, the
+	 * number
+	 * of AP increase really fast, so fast that it couldn't fit in a screen,
+	 * even rotated;
+	 * the list was really huge (we have a picture of that). The 2 minutes
+	 * timeout
+	 * (if the last packet seen is higher than 2 minutes, the AP isn't shown
+	 * anymore)
+	 * wasn't enough, so we decided to create a new option to change that
+	 * timeout.
+	 * We implemented this option in the highest tower (TV Tower) of Berlin,
+	 * eating an ice.
+	 */
+
+	int show_ap;
+	int show_sta;
+	int show_ack;
+	int hide_known;
+
+	int hopfreq;
+
+	char * s_iface; /* source interface to read from */
+	FILE * f_cap_in;
+	//struct pcap_file_header pfh_in;
+	int detect_anomaly; /* Detect WIPS protecting WEP in action */
+
+	char * freqstring;
+	int freqoption;
+	int chanoption;
+	int active_scan_sim; /* simulates an active scan, sending probe requests */
+
+	/* Airodump-ng start time: for kismet netxml file */
+	char * airodump_start_time;
+
+	pthread_t input_tid;
+	pthread_t gps_tid;
+	int sort_by;
+	int sort_inv;
+	int start_print_ap;
+	int start_print_sta;
+	//struct AP_info * p_selected_ap;
+	enum
+	{
+		selection_direction_down,
+		selection_direction_up,
+		selection_direction_no
+	} en_selection_direction;
+	int mark_cur_ap;
+	int num_cards;
+	int do_pause;
+	int do_sort_always;
+
+	pthread_mutex_t mx_print; /* lock write access to ap LL   */
+	pthread_mutex_t mx_sort; /* lock write access to ap LL   */
+
+	unsigned char selected_bssid[6]; /* bssid that is selected */
+
+	u_int maxsize_essid_seen;
+	int show_manufacturer;
+	int show_uptime;
+	int file_write_interval;
+	u_int maxsize_wps_seen;
+	int show_wps;
+	//struct tm gps_time; /* the timestamp from the gps data */
+//#ifdef CONFIG_LIBNL
+//	unsigned int htval;
+//#endif
+	int background_mode;
+
+	unsigned long min_pkts;
+
+	int relative_time; /* read PCAP in psuedo-real-time */
+} lopt;
+
+
+void do_free(struct wif *wi);
+void set_lopt();
+static int getchancount(int valid)
+{
+	int i = 0, chan_count = 0;
+
+	while (lopt.channels[i])
+	{
+		i++;
+		if (lopt.channels[i] != -1) chan_count++;
+	}
+
+	if (valid) return (chan_count);
+	return (i);
+}
+
+scanner::scanner(char const *iface)
+  : wi{open(iface)} {
+    set_lopt();
+    launch();
+}
+void erase_display(int n)
+{
+	char command[13];
+
+	snprintf(command, sizeof(command), "%c[%dJ", 0x1B, n);
+	fprintf(stdout, "%s", command);
+	fflush(stdout);
+}
+static void sighandler(int signum)
+{
+	int card = 0;
+
+	if (signum == SIGUSR1)
+	{
+		ssize_t unused = read(lopt.cd_pipe[0], &card, sizeof(int));
+		if (unused < 0)
+		{
+			// error occurred
+			perror("read");
+			return;
+		}
+		else if (unused == 0)
+		{
+			// EOF
+			perror("EOF encountered read(opt.cd_pipe[0])");
+			return;
+		}
+    read(lopt.ch_pipe[0], &(lopt.channel[card]), sizeof(int));
+	}
+
+	if (signum == SIGUSR2)
+		read(lopt.gc_pipe[0], &lopt.gps_loc, sizeof(lopt.gps_loc));
+
+	if (signum == SIGINT || signum == SIGTERM)
+	{
+		lopt.do_exit = 1;
+		// show_cursor();
+		// reset_term();
+		fprintf(stdout, "Quitting...\n");
+	}
+
+	if (signum == SIGSEGV)
+	{
+		fprintf(stderr,
+				"Caught signal 11 (SIGSEGV). Please"
+				" contact the author!\n\n");
+		//show_cursor();
+		fflush(stdout);
+		exit(1);
+	}
+
+	if (signum == SIGALRM)
+	{
+		fprintf(stdout,
+				"Caught signal 14 (SIGALRM). Please"
+				" contact the author!\n\n");
+		//show_cursor();
+		exit(1);
+	}
+
+	if (signum == SIGCHLD) wait(NULL);
+
+	if (signum == SIGWINCH)
+	{
+		erase_display(0);
+		fflush(stdout);
+	}
+}
+
+static void
+channel_hopper(struct wif * wi, int if_num, int chan_count, pid_t parent)
+{
+	int ch, ch_idx = 0, card = 0, chi = 0, cai = 0, j = 0, k = 0, first = 1,
+			again;
+	int dropped = 0;
+
+	while (0 == kill(parent, 0))
+	{
+		for (j = 0; j < if_num; j++)
+		{
+			again = 1;
+
+			ch_idx = chi % chan_count;
+
+			card = cai % if_num;
+
+			++chi;
+			++cai;
+
+			if (lopt.chswitch == 2 && !first)
+			{
+				j = if_num - 1;
+				card = if_num - 1;
+
+				if (getchancount(1) > if_num)
+				{
+					while (again)
+					{
+						again = 0;
+						for (k = 0; k < (if_num - 1); k++)
+						{
+							if (lopt.channels[ch_idx] == lopt.channel[k])
+							{
+								again = 1;
+								ch_idx = chi % chan_count;
+								chi++;
+							}
+						}
+					}
+				}
+			}
+
+			if (lopt.channels[ch_idx] == -1)
+			{
+				j--;
+				cai--;
+				dropped++;
+				if (dropped >= chan_count)
+				{
+					ch = wi_get_channel(wi[card]);
+					lopt.channel[card] = ch;
+					write(lopt.cd_pipe[1], &card, sizeof(int));
+					write(lopt.ch_pipe[1], &ch, sizeof(int));
+					kill(parent, SIGUSR1);
+					usleep(1000);
+				}
+				continue;
+			}
+
+			dropped = 0;
+
+			ch = lopt.channels[ch_idx];
+
+//#ifdef CONFIG_LIBNL
+			if (wi_set_ht_channel(wi[card], ch, lopt.htval) == 0)
+//#else
+
+			{
+				lopt.channel[card] = ch;
+				write(lopt.cd_pipe[1], &card, sizeof(int));
+				write(lopt.ch_pipe[1], &ch, sizeof(int));
+				if (lopt.active_scan_sim > 0) send_probe_request(wi[card]);
+				kill(parent, SIGUSR1);
+				usleep(1000);
+			}
+			else
+			{
+				lopt.channels[ch_idx] = -1; /* remove invalid channel */
+				j--;
+				cai--;
+				continue;
+			}
+		}
+
+		if (lopt.chswitch == 0)
+		{
+			chi = chi - (if_num - 1);
+		}
+
+		if (first)
+		{
+			first = 0;
+		}
+
+		usleep((useconds_t)(lopt.hopfreq * 1000));
+	}
+
+	exit(0);
+}
+
+
+void scanner::launch() {
+  int fd_raw = wi->wi_fd(wi);
+  int fdh = fd_raw > fdh ? fd_raw : 0;
+  int chan_count = getchancount(0);
+
+  pid_t main_pid = getpid();
+
+	pipe(lopt.ch_pipe);
+	pipe(lopt.cd_pipe);
+
+  struct sigaction action;
+  action.sa_flags = 0;
+  action.sa_handler = &sighandler;
+  sigemptyset(&action.sa_mask);
+
+  if (sigaction(SIGUSR1, &action, NULL) == -1)
+    perror("sigaction(SIGUSR1)");
+
+  if (!fork())
+  {
+    /* reopen cards.  This way parent & child don't share
+    * resources for
+    * accessing the card (e.g. file descriptors) which may cause
+    * problems.  -sorbo
+    */
+    char ifnam[64];
+    strncpy(ifnam, wi->wi_interface, sizeof(ifnam));
+
+    wi->wi_close(wi);
+    wi = open(ifnam);
+    if (!wi)
+    {
+      printf("Can't reopen %s\n", ifnam);
+      exit(EXIT_FAILURE);
+    }
+
+    /* Drop privileges */
+    if (setuid(getuid()) == -1)
+    {
+      perror("setuid");
+    }
+
+    channel_hopper(wi, lopt.num_cards, chan_count, main_pid);
+    exit(EXIT_FAILURE);
+  }
+
+
+}
+
+
+
+
+
 
 struct nl80211_state {
   // #if !defined(CONFIG_LIBNL30) && !defined(CONFIG_LIBNL20)
@@ -165,11 +551,27 @@ static int linux_get_freq(struct wif *wi) {
   printf("placeholder linux_get_freq\n");
   return 0;
 }
+static void nl80211_cleanup(struct nl80211_state * state)
+{
+	genl_family_put(state->nl80211);
+	nl_cache_free(state->nl_cache);
+	nl_socket_free(state->nl_sock);
+}
 static void linux_close_nl80211(struct wif *wi) {
   printf("placeholder linux_close_nl80211\n");
+
+	struct priv_linux * pl = (priv_linux *)wi->wi_priv;
+	nl80211_cleanup(&state);
+
+	if (pl->fd_in) close(pl->fd_in);
+	if (pl->fd_out) close(pl->fd_out);
+
+	do_free(wi);
 }
+
 static int linux_fd(struct wif *wi) {
-  printf("placeholder linux_close_nl80211\n");
+  struct priv_linux * pl = (priv_linux* )wi->wi_priv;
+	return pl->fd_in;
   return 0;
 }
 static int linux_get_mac(struct wif *wi, unsigned char *mac) {
@@ -432,7 +834,7 @@ close_in:
   return 1;
 }
 
-static void do_free(struct wif *wi) {
+void do_free(struct wif *wi) {
   struct priv_linux *pl = (priv_linux *)wi->wi_priv;
 
   if (pl->wlanctlng)
@@ -486,9 +888,73 @@ wif *scanner::open(char const *iface) {
   wi->wi_set_mtu = linux_set_mtu;
 
   if (do_linux_open(wi, iface)) {
+    printf("Do not opened\n");
     do_free(wi);
     return NULL;
   }
-
+  printf("Opened\n");
+  strncpy(wi->wi_interface, iface, sizeof(wi->wi_interface) - 1);
+	wi->wi_interface[sizeof(wi->wi_interface) - 1] = 0;
   return wi;
+}
+
+
+void set_lopt() {
+  lopt.chanoption = 0;
+	lopt.freqoption = 0;
+	lopt.num_cards = 0;
+//	fdh = 0;
+//	time_slept = 0;
+	lopt.batt = NULL;
+	lopt.chswitch = 0;
+//	opt.usegpsd = 0;
+	lopt.channels = (int *) bg_chans;
+	lopt.one_beacon = 1;
+	lopt.singlechan = 0;
+	lopt.singlefreq = 0;
+	lopt.dump_prefix = NULL;
+	
+	lopt.keyout = NULL;
+	
+	lopt.f_encrypt = 0;
+	lopt.asso_client = 0;
+	lopt.f_essid = NULL;
+	lopt.f_essid_count = 0;
+	lopt.active_scan_sim = 0;
+	lopt.update_s = 0;
+	lopt.decloak = 1;
+	lopt.is_berlin = 0;
+	lopt.numaps = 0;
+	lopt.maxnumaps = 0;
+	lopt.berlin = 120;
+	lopt.show_ap = 1;
+	lopt.show_sta = 1;
+	lopt.show_ack = 0;
+	lopt.hide_known = 0;
+	lopt.maxsize_essid_seen = 5; // Initial value: length of "ESSID"
+	lopt.show_manufacturer = 0;
+	lopt.show_uptime = 0;
+//	lopt.hopfreq = DEFAULT_HOPFREQ;
+
+	lopt.s_iface = NULL;
+	lopt.f_cap_in = NULL;
+	lopt.detect_anomaly = 0;
+	lopt.airodump_start_time = NULL;
+//	lopt.manufList = NULL;
+
+	lopt.gps_valid_interval
+		= 5; // If we dont get a new GPS update in 5 seconds - invalidate it
+	lopt.file_write_interval = 5; // Write file every 5 seconds by default
+	lopt.maxsize_wps_seen = 6;
+	lopt.show_wps = 0;
+	lopt.background_mode = -1;
+	lopt.do_exit = 0;
+	lopt.min_pkts = 2;
+	lopt.relative_time = 0;
+//#ifdef CONFIG_LIBNL
+//	lopt.htval = CHANNEL_NO_HT;
+//#endif
+//#ifdef HAVE_PCRE
+//	lopt.f_essid_regex = NULL;
+//#endif
 }

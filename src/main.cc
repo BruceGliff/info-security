@@ -5,9 +5,9 @@
 
 int main(int argc, char *arhv[]) {
 
-  monitor m{};
+  //monitor m{};
 
-  scanner s{m.GetIface()};
+  scanner s{"wlan0mon"};
 
   return 0;
 }
