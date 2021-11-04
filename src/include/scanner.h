@@ -5,10 +5,9 @@
 class scanner {
   wif *wi;
 
-  static wif *open(char const *);
-
   void launch();
 
 public:
+  static wif *open(char const *);
   scanner(char const *);
 };
