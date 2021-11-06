@@ -1,10 +1,11 @@
 #include <iostream>
 
-#include <monitoring.h>
+#include <Monitoring.h>
 
 int main(int argc, char *arhv[]) {
 
-  monitor m{};
+  Monitor m{};
+  
 
   return 0;
 }

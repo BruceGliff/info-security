@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-class monitor {
+class Monitor {
 
   std::vector<std::string> m_Ifaces{};
   std::vector<std::string>::const_iterator m_PreferedIface{};
@@ -16,12 +16,14 @@ class monitor {
   void SetIface(std::string const &iface, char const *) const;
 
 public:
-  monitor();
+  Monitor();
 
-  monitor(monitor &&) = delete;
-  monitor(monitor const &) = delete;
-  monitor const &operator=(monitor const &) = delete;
-  monitor const &operator=(monitor &&) = delete;
+  Monitor(Monitor &&) = delete;
+  Monitor(Monitor const &) = delete;
+  Monitor const &operator=(Monitor const &) = delete;
+  Monitor const &operator=(Monitor &&) = delete;
+  
+  ~Monitor();
 
-  ~monitor();
+  char const * GetIface() const;
 };

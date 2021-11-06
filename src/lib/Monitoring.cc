@@ -1,4 +1,4 @@
-#include <monitoring.h>
+#include <Monitoring.h>
 
 #include <cassert>
 #include <dirent.h>
@@ -8,7 +8,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-monitor::monitor() {
+Monitor::Monitor() {
   struct dirent *wlan_dir{};
   DIR *wlans_dir = opendir("/sys/class/net/");
   assert(wlans_dir && "cannot open /sys/class/net/");
@@ -22,11 +22,11 @@ monitor::monitor() {
 
   SelectPreferedIface();
   assert(CheckIfaceForValue(*m_PreferedIface, 1) &&
-         "interface already in monitor mode");
+         "interface already in Monitor mode");
   SetMonitor();
 }
 
-void monitor::SelectPreferedIface() {
+void Monitor::SelectPreferedIface() {
   assert(m_Ifaces.size() && "no available interfaces.");
   for (unsigned i = 0, e = m_Ifaces.size(); i != e; ++i) {
     std::cout << i << "  " << m_Ifaces.at(i) << std::endl;
@@ -39,7 +39,7 @@ void monitor::SelectPreferedIface() {
   m_PreferedIface = m_Ifaces.begin() + i;
 }
 
-bool monitor::CheckIfaceForValue(std::string const &iface, int value) const {
+bool Monitor::CheckIfaceForValue(std::string const &iface, int value) const {
   std::string fullpath =
       std::string{"/sys/class/ieee80211/phy0/device/net/"} + iface + "/type";
 
@@ -54,14 +54,14 @@ bool monitor::CheckIfaceForValue(std::string const &iface, int value) const {
   return val == value;
 }
 
-void monitor::SetIfaceDown(std::string const &iface) const {
+void Monitor::SetIfaceDown(std::string const &iface) const {
   SetIface(iface, "down");
 }
-void monitor::SetIfaceUp(std::string const &iface) const {
+void Monitor::SetIfaceUp(std::string const &iface) const {
   SetIface(iface, "up");
 }
 
-void monitor::SetIface(std::string const &iface, char const *status) const {
+void Monitor::SetIface(std::string const &iface, char const *status) const {
   pid_t pid = fork();
   if (pid == 0) {
     char const *params[] = {"ip",          "link", "set", "dev",
@@ -77,14 +77,14 @@ void monitor::SetIface(std::string const &iface, char const *status) const {
   wait(&ret);
   assert(ret == 0 && "ip failed");
 }
-void monitor::SetMonitor() const {
+void Monitor::SetMonitor() const {
   SetIfaceDown(*m_PreferedIface);
   pid_t pid = fork();
   std::string name = *m_PreferedIface + "mon";
   if (pid == 0) {
     char const *params[] = {"iw",        "phy",     "phy0",
                             "interface", "add",     name.c_str(),
-                            "type",      "monitor", 0};
+                            "type",      "Monitor", 0};
     char *const *p = const_cast<char *const *>(params);
     execv("/usr/sbin/iw", p);
     perror("execv: ");
@@ -99,18 +99,18 @@ void monitor::SetMonitor() const {
     assert(1 && "iw failed");
   }
 
-  // checks that value of monitor is 803
+  // checks that value of Monitor is 803
   // then setChennels
   // if check failes -> stop mon abort
   if (!CheckIfaceForValue(name, 803)) {
-    std::cerr << "newly create monitor not in monitor mode!\n";
-    std::cerr << "probably you should remove new monitor by:\n";
+    std::cerr << "newly create Monitor not in Monitor mode!\n";
+    std::cerr << "probably you should remove new Monitor by:\n";
     std::cerr << "iw " << name << " del\n";
     std::cerr << "and turn on " << *m_PreferedIface << "\n";
-    assert(1 && "monitor setting fail");
+    assert(1 && "Monitor setting fail");
   }
   sleep(1);
-  // setup monitor up
+  // setup Monitor up
   SetIfaceUp(name);
   // Set channel
   pid = fork();
@@ -148,7 +148,7 @@ void monitor::SetMonitor() const {
   }
 }
 
-monitor::~monitor() {
+Monitor::~Monitor() {
   sleep(10);
   pid_t pid = fork();
   if (pid == 0) {
@@ -189,4 +189,8 @@ monitor::~monitor() {
   }
 
   SetIfaceUp(*m_PreferedIface);
+}
+
+char const * Monitor::GetIface() const {
+  return m_PreferedIface->c_str();
 }
