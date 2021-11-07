@@ -1,5 +1,20 @@
 #include <AP_Selecter.h>
 
+#include <station.h>
+
+#include <cassert>
+#include <cstdlib>
+#include <cstdio>
+#include <ctime>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/select.h>
+#include <csignal>
+#include <unistd.h>
+#include <errno.h>
+
+#define MIN(x,y) ((x) > (y) ? (y) : (x))
+
 static AP_info * launch(char const * Iface);
 static void release(AP_info * AP_Node);
 
@@ -9,10 +24,16 @@ AP_Selecter::AP_Selecter(char const * Iface) {
   release(AP_first);
 };
 
+void AP_Selecter::GetAPs(AP_info * AP_1st) {
+  while (AP_1st != NULL) {
+    m_AP_Chain.emplace_back(AP_1st->bssid, AP_1st->essid);
+    AP_1st = AP_1st->next;
+  }
+}
 
 static void release(AP_info * AP_Node) {
   assert(AP_Node && "Node is NULL");
-  AP_Node * AP_Next {nullptr};
+  AP_info * AP_Next {nullptr};
 	while (AP_Node != NULL) {
 		// Freeing AP List
 		AP_Next = AP_Node->next;
@@ -41,7 +62,7 @@ static struct local_options
 
 static int add_packet(unsigned char * h80211,
 						   int caplen) {
-	REQUIRE(h80211 != NULL);
+  assert(h80211 && "packet is NULL");
 	size_t n;
 	unsigned char *p;
 	unsigned char bssid[6];
@@ -149,7 +170,7 @@ channel_hopper(struct wif * wi, int chan_count, pid_t parent) {
 		int const ch = lopt.channels[chi++ % chan_count];
 		if (wi_set_channel(wi, ch) == 0) {
 			lopt.channel = ch;
-			IGNORE_LTZ(write(lopt.ch_pipe[1], &ch, sizeof(int)));
+			write(lopt.ch_pipe[1], &ch, sizeof(int));
 			kill(parent, SIGUSR1);
 			usleep(1000);
 		}
@@ -194,7 +215,7 @@ static AP_info * launch(char const * Iface) {
 	fd_raw = wi_fd(wi);
 
 	chan_count = sizeof(bg_chans) / sizeof(int);
-	IGNORE_NZ(pipe(lopt.ch_pipe));
+	pipe(lopt.ch_pipe);
 
 	struct sigaction action;
 	action.sa_flags = 0;
@@ -205,7 +226,7 @@ static AP_info * launch(char const * Iface) {
 		perror("sigaction(SIGUSR1)");
 
 	if (!fork()) {
-		strlcpy(ifnam, wi_get_ifname(wi), sizeof(ifnam));
+		strncpy(ifnam, wi_get_ifname(wi), sizeof(ifnam));
 
 		wi_close(wi);
 		wi = wi_open(ifnam);
@@ -251,7 +272,7 @@ static AP_info * launch(char const * Iface) {
 			if (errno == EINTR)
 				continue;
 			perror("select failed");
-			return (EXIT_FAILURE);
+			return nullptr;
 		}
 
 		if (FD_ISSET(fd_raw, &rfds)) {
@@ -276,7 +297,7 @@ static AP_info * launch(char const * Iface) {
 	// 	free(ap_cur);
 	// 	ap_cur = ap_next;
 	// }
-	return (EXIT_SUCCESS);
+	return lopt.ap_1st;
 }
 
 void printAP() {
