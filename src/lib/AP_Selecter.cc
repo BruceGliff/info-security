@@ -3,6 +3,8 @@
 #include <station.h>
 #include <wif.h>
 
+#include <iostream>
+
 #include <cassert>
 #include <cstdlib>
 #include <cstdio>
@@ -13,6 +15,7 @@
 #include <csignal>
 #include <unistd.h>
 #include <errno.h>
+#include <cstring>
 
 #define MIN(x,y) ((x) > (y) ? (y) : (x))
 
@@ -27,9 +30,47 @@ AP_Selecter::AP_Selecter(char const * Iface) {
 
 void AP_Selecter::GetAPs(AP_info * AP_1st) {
   while (AP_1st != NULL) {
+    if (strlen((char*)AP_1st->essid))
     m_AP_Chain.emplace_back(AP_1st->bssid, AP_1st->essid);
     AP_1st = AP_1st->next;
   }
+}
+
+void AP_Selecter::ChooseAP() {
+  PrintAPs();
+  bool isSelectBad = true;
+  int value {0};
+  while (isSelectBad) {
+    std::cout << "\nEnter valid AcessPoint number: ";
+    std::cin.clear();
+    std::cin >> value;
+
+    isSelectBad = !(value > 0 && value < m_AP_Chain.size());
+  }
+
+  m_PreferedAP = m_AP_Chain.begin() + value;
+}
+
+AP_info_tiny const & AP_Selecter::GetPreferedAP() const {
+  return *m_PreferedAP;
+}
+
+void AP_Selecter::PrintAPs() {
+  int it = 0;
+  for (auto && x : m_AP_Chain) {
+    std::cout << '[' << it++ << "] ";
+    x.Print(); 
+  }
+}
+
+AP_info_tiny::AP_info_tiny(uint8_t * bssid_in, uint8_t * essid_in) {
+  memcpy(bssid, bssid_in, sizeof(bssid));
+  memcpy(essid, essid_in, ESSID_LENGTH + 1);
+}
+void AP_info_tiny::Print() {
+  for (int i = 0; i != 5; ++i)
+    printf("%02x:", bssid[i]);
+  printf("%02x   %s\n", bssid[5], essid);
 }
 
 static void release(AP_info * AP_Node) {
@@ -45,7 +86,7 @@ static void release(AP_info * AP_Node) {
 
 static int bg_chans[] = {1, 7, 13, 2, 8, 3, 14, 9, 4, 10, 5, 11, 6, 12, 0};
 
-void printAP(void);
+static void printAP(void);
 
 /* bunch of global stuff */
 static struct local_options
@@ -148,8 +189,7 @@ static int add_packet(unsigned char * h80211,
 	return (0);
 }
 
-static void sighandler(int signum)
-{
+static void sighandler(int signum) {
 	if (signum == SIGINT || signum == SIGTERM)
 		lopt.do_exit = 1;
 
@@ -168,7 +208,7 @@ channel_hopper(wif * wi, int chan_count, pid_t parent) {
 	int chi = 0;
 	while (0 == kill(parent, 0)) {
 		int const ch = lopt.channels[chi++ % chan_count];
-		if (wi->set_channel(ch) == 0) {
+		if (wi->wi_set_channel(wi, ch) == 0) {
 			lopt.channel = ch;
 			write(lopt.ch_pipe[1], &ch, sizeof(int));
 			kill(parent, SIGUSR1);
@@ -210,8 +250,8 @@ static AP_info * launch(char const * Iface) {
 
 	lopt.s_iface = Iface;
 
-  wif * wi = new wif{lopt.s_iface};
-	fd_raw = wi->fd();
+  wif * wi = wi_open(lopt.s_iface);
+	fd_raw = wi->wi_fd(wi);
 
 	chan_count = sizeof(bg_chans) / sizeof(int);
 	pipe(lopt.ch_pipe);
@@ -224,11 +264,12 @@ static AP_info * launch(char const * Iface) {
 	if (sigaction(SIGUSR1, &action, NULL) == -1)
 		perror("sigaction(SIGUSR1)");
 
-	if (!fork()) {
-		strncpy(ifnam, wi->wi_get_iface(), sizeof(ifnam));
-    delete wi;
-    wif * wi1 = new wif{ifnam};
-		if (!wi1) {
+  pid_t child_pid = fork();
+	if (!child_pid) {
+		strncpy(ifnam, wi_get_ifname(wi), sizeof(ifnam));
+    wi_close(wi);
+		wi = wi_open(ifnam);
+		if (!wi) {
 			printf("Can't reopen %s\n", ifnam);
 			exit(EXIT_FAILURE);
 		}
@@ -237,7 +278,7 @@ static AP_info * launch(char const * Iface) {
 		if (setuid(getuid()) == -1)
 			perror("setuid");
 
-		channel_hopper(wi1, chan_count, main_pid);
+		channel_hopper(wi, chan_count, main_pid);
 		exit(EXIT_FAILURE);
 	}
 
@@ -267,7 +308,7 @@ static AP_info * launch(char const * Iface) {
 		FD_SET(fd_raw, &rfds);
 
     int select_st = select(fd_raw + 1, &rfds, NULL, NULL, &tv0);
-    printf("%d\n", select_st);
+    // printf("%d\n", select_st);
 		if (select_st < 0) {
 			if (errno == EINTR)
 				continue;
@@ -278,26 +319,23 @@ static AP_info * launch(char const * Iface) {
 		if (FD_ISSET(fd_raw, &rfds)) {
 			memset(buffer, 0, sizeof(buffer));
 			h80211 = buffer;
-			if ((caplen = wi->read(h80211, sizeof(buffer), &rx)) == -1) {
+			if ((caplen = wi_read(
+						wi, NULL, NULL, h80211, sizeof(buffer), &rx))
+				== -1) {
 				perror("iface down");
 				break;
 			}
 			add_packet(h80211, caplen);
 		}
 	}
-  delete wi;
-	printAP();
-	// ap_cur = lopt.ap_1st;
-	// while (ap_cur != NULL) {
-	// 	// Freeing AP List
-	// 	ap_next = ap_cur->next;
-	// 	free(ap_cur);
-	// 	ap_cur = ap_next;
-	// }
+  wi_close(wi);
+
+  kill(child_pid, SIGKILL);
+
 	return lopt.ap_1st;
 }
 
-void printAP() {
+static void printAP() {
 	FILE * f = fopen("st.out", "w");
 	if (!f) {
 		perror("st.out");

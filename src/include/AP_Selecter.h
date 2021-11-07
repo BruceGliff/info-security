@@ -3,15 +3,12 @@
 #include "ieee80211_def.h"
 
 #include <vector>
-#include <cstring>
 
 struct AP_info_tiny {
   uint8_t bssid[6] {0};
   uint8_t essid[ESSID_LENGTH + 1] {0};
-  AP_info_tiny(uint8_t * bssid_in, uint8_t * essid_in) {
-    memcpy(bssid, bssid_in, sizeof(bssid));
-    memcpy(essid, essid_in, ESSID_LENGTH + 1);
-  }
+  AP_info_tiny(uint8_t * bssid_in, uint8_t * essid_in);
+  void Print();
 };
 
 // forward declaration
@@ -23,6 +20,7 @@ class AP_Selecter {
   std::vector<AP_info_tiny>::const_iterator m_PreferedAP;
 
   void GetAPs(AP_info * AP_1st);
+  void PrintAPs();
 
 public:
   AP_Selecter(char const * Iface);
@@ -34,4 +32,5 @@ public:
   ~AP_Selecter() = default;
 
   void ChooseAP();
+  AP_info_tiny const & GetPreferedAP() const;
 };

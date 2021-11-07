@@ -31,8 +31,19 @@
 
 // To resolve net/if.h and linux/if.h conflict
 extern "C" unsigned int if_nametoindex(const char * __ifname) throw();
-struct priv_linux
-{
+static struct wif * linux_open(char const * iface);
+static int openraw(struct priv_linux * dev, char const * iface, int fd, int * arptype, unsigned char * mac);
+static int do_linux_open(struct wif * wi, char const * iface);
+static int linux_read(struct wif * wi, struct timespec * ts, int * dlt, unsigned char * buf, int count, struct rx_info * ri);
+static int linux_nl80211_init(struct nl80211_state * state);
+static int linux_set_channel(struct wif * wi, int channel);
+static void linux_close_nl80211(struct wif * wi);
+static void do_free(struct wif * wi);
+static int linux_fd(struct wif * wi);
+static void nl80211_cleanup(struct nl80211_state * state);
+static struct wif * wi_alloc(int sz);
+
+struct priv_linux {
 	int fd_in, arptype_in;
 	int fd_out, arptype_out;
 	int fd_main;
@@ -51,29 +62,73 @@ struct priv_linux
 	unsigned char pl_mac[6];
 	int inject_wlanng;
 };
-
-struct nl80211_state
-{
+static priv_linux * wi_priv(struct wif * wi) { return (priv_linux*) wi->wi_priv; }
+char const * wi_get_ifname(struct wif * wi) { return wi->wi_interface; }
+void wi_close(wif * wi) { wi->wi_close(wi); }
+int wi_read(struct wif * wi, struct timespec * ts, int * dlt, unsigned char * h80211, int len, struct rx_info * ri) {
+	assert(wi->wi_read);
+	return wi->wi_read(wi, ts, dlt, h80211, len, ri);
+}
+struct nl80211_state {
 	struct nl_sock * nl_sock;
 	struct nl_cache * nl_cache;
 	struct genl_family * nl80211;
 } state;
 
 static int chan;
-static int openraw(char const * iface, int fd, int * arptype);
-static int linux_nl80211_init(struct nl80211_state * state);
-static void do_free(wif * wi);
 
-wif::wif(char const * Iface) {	
-  assert(Iface && Iface[0] && "iface is NULL");
-  open(Iface);
+struct wif * wi_open(char const * iface) {
+  return linux_open(iface);
+}
+static struct wif * linux_open(char const * iface) {
+  assert(iface);
+	struct wif * wi;
+	struct priv_linux * pl;
+
+	if (iface == NULL || strlen(iface) >= IFNAMSIZ)
+	{
+		return NULL;
+	}
+
+	wi = wi_alloc(sizeof(*pl));
+	if (!wi) return NULL;
+	wi->wi_read = linux_read;
+	linux_nl80211_init(&state);
+	wi->wi_set_channel = linux_set_channel;
+	wi->wi_close = linux_close_nl80211;
+	wi->wi_fd = linux_fd;
+
+	if (do_linux_open(wi, iface)) {
+		do_free(wi);
+		return NULL;
+	}
+  strncpy(wi->wi_interface, iface, MAX_IFACE_NAME);
+  wi->wi_interface[MAX_IFACE_NAME - 1] = 0;
+	return wi;
 }
 
-priv_linux * wif::wi_priv() {
-  return static_cast<priv_linux*>(priv);
-};
-char const * wif::wi_get_iface() {
-  return interface;
+static void do_free(struct wif * wi) {
+	struct priv_linux * pl = wi_priv(wi);
+
+	if (pl->wlanctlng) free(pl->wlanctlng);
+
+	if (pl->iwpriv) free(pl->iwpriv);
+
+	if (pl->iwconfig) free(pl->iwconfig);
+
+	if (pl->ifconfig) free(pl->ifconfig);
+
+	if (pl->wl) free(pl->wl);
+
+	if (pl->main_if) free(pl->main_if);
+
+	free(pl);
+	free(wi);
+}
+
+static int linux_fd(struct wif * wi) {
+	struct priv_linux * pl = wi_priv(wi);
+	return pl->fd_in;
 }
 
 static void nl80211_cleanup(struct nl80211_state * state) {
@@ -82,109 +137,94 @@ static void nl80211_cleanup(struct nl80211_state * state) {
 	nl_socket_free(state->nl_sock);
 }
 
-int wif::open(char const * Iface) {
-  priv = malloc(sizeof(priv_linux));
-  linux_nl80211_init(&state);
-  int const status = do_linux_open(Iface);
-  if (interface != Iface)
-	  strncpy(interface, Iface, sizeof(interface) - 1);
-	interface[sizeof(interface) - 1] = 0;
-  return status;
-}
-
-wif::~wif() {
-  close();
-}
-
-int wif::reopen() {
-  close();
-  return open(interface);
-}
-
-void wif::close() {
-	priv_linux * pl = wi_priv();
+static void linux_close_nl80211(struct wif * wi) {
+	struct priv_linux * pl = wi_priv(wi);
 	nl80211_cleanup(&state);
 
-	if (pl->fd_in) ::close(pl->fd_in);
-	if (pl->fd_out) ::close(pl->fd_out);
+	if (pl->fd_in) close(pl->fd_in);
+	if (pl->fd_out) close(pl->fd_out);
 
-	do_free(this);
+	do_free(wi);
+}
+static int ieee80211_channel_to_frequency(int chan) {
+	if (chan < 14) return 2407 + chan * 5;
+	if (chan == 14) return 2484;
+	return (chan + 1000) * 5;
 }
 
-static void do_free(wif * wi) {
-	priv_linux * pl = wi->wi_priv();
+static int linux_set_channel(struct wif * wi, int channel) {
+	struct priv_linux * dev = wi_priv(wi);
+	char s[32];
 
-	if (pl->wlanctlng) free(pl->wlanctlng);
-	if (pl->iwpriv) free(pl->iwpriv);
-	if (pl->iwconfig) free(pl->iwconfig);
-	if (pl->ifconfig) free(pl->ifconfig);
-	if (pl->wl) free(pl->wl);
-	if (pl->main_if) free(pl->main_if);
+	unsigned int devid;
+	struct nl_msg * msg;
+	unsigned int freq;
 
-	free(pl);
-}
+	memset(s, 0, sizeof(s));
 
-int wif::do_linux_open(char const * iface) {
-	priv_linux * dev = wi_priv();
-	/* open raw socks */
-	if ((dev->fd_in = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
-		perror("socket(PF_PACKET) failed");
-		if (getuid() != 0)
-			fprintf(stderr, "This program requires root privileges.\n");
-		return (1);
+	chan = channel;
+
+	devid = if_nametoindex(wi->wi_interface);
+	freq = ieee80211_channel_to_frequency(channel);
+	msg = nlmsg_alloc();
+	if (!msg)
+	{
+		fprintf(stderr, "failed to allocate netlink message\n");
+		return 2;
 	}
 
-	if ((dev->fd_main = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
-		perror("socket(PF_PACKET) failed");
-		if (getuid() != 0)
-			fprintf(stderr, "This program requires root privileges.\n");
-		return (1);
-	}
+	genlmsg_put(msg,
+				0,
+				0,
+				genl_family_get_id(state.nl80211),
+				0,
+				0,
+				NL80211_CMD_SET_WIPHY,
+				0);
+	unsigned ht = NL80211_CHAN_NO_HT;
 
-	if ((dev->fd_out = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
-		perror("socket(PF_PACKET) failed");
-		goto close_in;
-	}
+	NLA_PUT_U32(msg, NL80211_ATTR_IFINDEX, devid);
+	NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_FREQ, freq);
+	NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE, ht);
 
-	if (!openraw(iface, dev->fd_out, &dev->arptype_out))
-		goto close_out;
+	nl_send_auto_complete(state.nl_sock, msg);
+	nlmsg_free(msg);
 
-  ::close(dev->fd_in);
-  dev->fd_in = dev->fd_out;
-	dev->arptype_in = dev->arptype_out;
-	return 0;
-close_out:
-	::close(dev->fd_out);
+	dev->channel = channel;
 
-close_in:
-	::close(dev->fd_in);
-	return 1;
+	return (0);
+nla_put_failure:
+	return -ENOBUFS;
 }
 
 static int linux_nl80211_init(struct nl80211_state * state) {
-	int err{0};
+	int err;
 
 	state->nl_sock = nl_socket_alloc();
 
-	if (!state->nl_sock) {
+	if (!state->nl_sock)
+	{
 		fprintf(stderr, "Failed to allocate netlink socket.\n");
 		return -ENOMEM;
 	}
 
-	if (genl_connect(state->nl_sock)) {
+	if (genl_connect(state->nl_sock))
+	{
 		fprintf(stderr, "Failed to connect to generic netlink.\n");
 		err = -ENOLINK;
 		goto out_handle_destroy;
 	}
 
-	if (genl_ctrl_alloc_cache(state->nl_sock, &state->nl_cache)) {
+	if (genl_ctrl_alloc_cache(state->nl_sock, &state->nl_cache))
+	{
 		fprintf(stderr, "Failed to allocate generic netlink cache.\n");
 		err = -ENOMEM;
 		goto out_handle_destroy;
 	}
 
 	state->nl80211 = genl_ctrl_search_by_name(state->nl_cache, "nl80211");
-	if (!state->nl80211) {
+	if (!state->nl80211)
+	{
 		fprintf(stderr, "nl80211 not found.\n");
 		err = -ENOENT;
 		goto out_cache_free;
@@ -199,61 +239,8 @@ out_handle_destroy:
 	return err;
 }
 
-static int openraw(char const * iface, int fd, int * arptype) {
-  assert(iface && arptype);
-
-	struct ifreq ifr;
-	struct packet_mreq mr;
-	struct sockaddr_ll sll;
-
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, iface, sizeof(ifr.ifr_name) - 1);
-
-	if (ioctl(fd, SIOCGIFINDEX, &ifr) < 0) {
-		printf("Interface %s: \n", iface);
-		perror("ioctl(SIOCGIFINDEX) failed");
-		return -1;
-	}
-
-	memset(&sll, 0, sizeof(sll));
-	sll.sll_family = AF_PACKET;
-	sll.sll_ifindex = ifr.ifr_ifindex;
-  sll.sll_protocol = htons(ETH_P_ALL);
-
-	if (ioctl(fd, SIOCGIFHWADDR, &ifr) < 0) {
-		printf("Interface %s: \n", iface);
-		perror("ioctl(SIOCGIFHWADDR) failed");
-		return -1;
-	}
-
-	if (bind(fd, (struct sockaddr *) &sll, sizeof(sll)) < 0) {
-		printf("Interface %s: \n", iface);
-		perror("bind(ETH_P_ALL) failed");
-		return -1;
-	}
-
-	/* lookup the hardware type */
-	if (ioctl(fd, SIOCGIFHWADDR, &ifr) < 0) {
-		printf("Interface %s: \n", iface);
-		perror("ioctl(SIOCGIFHWADDR) failed");
-		return -1;
-	}
-	*arptype = ifr.ifr_hwaddr.sa_family;
-
-	memset(&mr, 0, sizeof(mr));
-	mr.mr_ifindex = sll.sll_ifindex;
-	mr.mr_type = PACKET_MR_PROMISC;
-
-	if (setsockopt(fd, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &mr, sizeof(mr)) < 0) {
-		perror("setsockopt(PACKET_MR_PROMISC) failed");
-		return -1;
-	}
-
-	return 0;
-}
-
-int wif::read(unsigned char * buf, int count, rx_info * ri) {
-	priv_linux * dev = wi_priv();
+static int linux_read(struct wif * wi, struct timespec * ts, int * dlt, unsigned char * buf, int count, struct rx_info * ri) {
+	struct priv_linux * dev = wi_priv(wi);
 	unsigned char tmpbuf[4096] __attribute__((aligned(8)));
 
 	int caplen, n, got_signal, got_noise, got_channel, fcs_removed;
@@ -262,10 +249,11 @@ int wif::read(unsigned char * buf, int count, rx_info * ri) {
 
 	if ((unsigned) count > sizeof(tmpbuf)) return (-1);
 
-	caplen = ::read(dev->fd_in, tmpbuf, count);
+	caplen = read(dev->fd_in, tmpbuf, count);
 	if (caplen < 0 && errno == EAGAIN)
 		return (-1);
-	else if (caplen < 0) {
+	else if (caplen < 0)
+	{
 		perror("read failed");
 		return (-1);
 	}
@@ -279,9 +267,15 @@ int wif::read(unsigned char * buf, int count, rx_info * ri) {
     < 0)
     return (0);
 
-  while (ri && (ieee80211_radiotap_iterator_next(&iterator) >= 0)) {
-    switch (iterator.this_arg_index) {
+  while (ri && (ieee80211_radiotap_iterator_next(&iterator) >= 0))
+  {
+
+    switch (iterator.this_arg_index)
+    {
+
       case IEEE80211_RADIOTAP_TSFT:
+      // 	ri->ri_mactime
+      // 		= le64_to_cpu(*((uint64_t *) iterator.this_arg));
         break;
 
       case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
@@ -299,7 +293,8 @@ int wif::read(unsigned char * buf, int count, rx_info * ri) {
 
       case IEEE80211_RADIOTAP_DBM_ANTNOISE:
       case IEEE80211_RADIOTAP_DB_ANTNOISE:
-        if (!got_noise) {
+        if (!got_noise)
+        {
           if (*iterator.this_arg < 127)
             ri->ri_noise = *iterator.this_arg;
           else
@@ -314,6 +309,9 @@ int wif::read(unsigned char * buf, int count, rx_info * ri) {
         break;
 
       case IEEE80211_RADIOTAP_CHANNEL:
+        // ri->ri_channel = getChannelFromFrequency(
+        // 	le16toh(*(uint16_t *) iterator.this_arg));
+        // got_channel = 1;
         break;
 
       case IEEE80211_RADIOTAP_RATE:
@@ -324,7 +322,8 @@ int wif::read(unsigned char * buf, int count, rx_info * ri) {
         /* is the CRC visible at the end?
         * remove
         */
-        if (*iterator.this_arg & IEEE80211_RADIOTAP_F_FCS) {
+        if (*iterator.this_arg & IEEE80211_RADIOTAP_F_FCS)
+        {
           fcs_removed = 1;
           caplen -= 4;
         }
@@ -347,56 +346,124 @@ int wif::read(unsigned char * buf, int count, rx_info * ri) {
 	return (caplen);
 }
 
-int wif::fd() {
-	priv_linux * pl = wi_priv();
-	return pl->fd_in;
+static struct wif * wi_alloc(int sz) {
+	struct wif * wi;
+	void * priv;
+
+	/* Allocate wif & private state */
+	wi = (wif*) malloc(sizeof(*wi));
+	if (!wi) return NULL;
+	memset(wi, 0, sizeof(*wi));
+
+	priv = malloc(sz);
+	if (!priv) {
+		free(wi);
+		return NULL;
+	}
+	memset(priv, 0, sz);
+	wi->wi_priv = priv;
+	return wi;
 }
 
-static int ieee80211_channel_to_frequency(int channel) {
-	if (channel < 14) return 2407 + channel * 5;
-	if (channel == 14) return 2484;
-	return (channel + 1000) * 5;
-}
+static int do_linux_open(struct wif * wi, char const * iface) {
+	struct priv_linux * dev = wi_priv(wi);
 
-int wif::set_channel(int channel) {
-	priv_linux * dev = wi_priv();
-	char s[32];
-
-	unsigned int devid;
-	struct nl_msg * msg;
-	unsigned int freq;
-
-	memset(s, 0, sizeof(s));
-	chan = channel;
-
-	devid = if_nametoindex(interface);
-	freq = ieee80211_channel_to_frequency(channel);
-	msg = nlmsg_alloc();
-	if (!msg) {
-		fprintf(stderr, "failed to allocate netlink message\n");
-		return -1;
+	if (iface == NULL || strlen(iface) >= IFNAMSIZ) {
+		return (1);
 	}
 
-	genlmsg_put(msg,
-				0,
-				0,
-				genl_family_get_id(state.nl80211),
-				0,
-				0,
-				NL80211_CMD_SET_WIPHY,
-				0);
-        
-	unsigned ht = NL80211_CHAN_NO_HT;
-	NLA_PUT_U32(msg, NL80211_ATTR_IFINDEX, devid);
-	NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_FREQ, freq);
-	NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE, ht);
+	if ((dev->fd_in = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
+		perror("socket(PF_PACKET) failed");
+		if (getuid() != 0)
+			fprintf(stderr, "This program requires root privileges.\n");
+		return (1);
+	}
 
-	nl_send_auto_complete(state.nl_sock, msg);
-	nlmsg_free(msg);
+	if ((dev->fd_main = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
+		perror("socket(PF_PACKET) failed");
+		if (getuid() != 0)
+			fprintf(stderr, "This program requires root privileges.\n");
+		return (1);
+	}
 
-	dev->channel = channel;
+	if ((dev->fd_out = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
+		perror("socket(PF_PACKET) failed");
+		goto close_in;
+	}
+	if (openraw(dev, iface, dev->fd_out, &dev->arptype_out, dev->pl_mac) != 0) {
+		goto close_out;
+	}
+
+  close(dev->fd_in);
+  dev->fd_in = dev->fd_out;
+	dev->arptype_in = dev->arptype_out;
+
+	return 0;
+close_out:
+	close(dev->fd_out);
+close_in:
+	close(dev->fd_in);
+	return 1;
+}
+
+static int openraw(struct priv_linux * dev, char const * iface, int fd, int * arptype, unsigned char * mac) {
+	assert(iface);
+
+	struct ifreq ifr;
+	struct packet_mreq mr;
+	struct sockaddr_ll sll;
+
+	if (strlen(iface) >= sizeof(ifr.ifr_name))
+	{
+		printf("Interface name too long: %s\n", iface);
+		return (1);
+	}
+
+	/* find the interface index */
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, iface, sizeof(ifr.ifr_name) - 1);
+
+	if (ioctl(fd, SIOCGIFINDEX, &ifr) < 0)
+	{
+		printf("Interface %s: \n", iface);
+		perror("ioctl(SIOCGIFINDEX) failed");
+		return (1);
+	}
+
+	memset(&sll, 0, sizeof(sll));
+	sll.sll_family = AF_PACKET;
+	sll.sll_ifindex = ifr.ifr_ifindex;
+  sll.sll_protocol = htons(ETH_P_ALL);
+
+	if (ioctl(fd, SIOCGIFHWADDR, &ifr) < 0) {
+		printf("Interface %s: \n", iface);
+		perror("ioctl(SIOCGIFHWADDR) failed");
+		return (1);
+	}
+
+	if (bind(fd, (struct sockaddr *) &sll, sizeof(sll)) < 0) {
+		printf("Interface %s: \n", iface);
+		perror("bind(ETH_P_ALL) failed");
+		return (1);
+	}
+
+	/* lookup the hardware type */
+
+	if (ioctl(fd, SIOCGIFHWADDR, &ifr) < 0) {
+		printf("Interface %s: \n", iface);
+		perror("ioctl(SIOCGIFHWADDR) failed");
+		return (1);
+	}
+	*arptype = ifr.ifr_hwaddr.sa_family;
+
+	memset(&mr, 0, sizeof(mr));
+	mr.mr_ifindex = sll.sll_ifindex;
+	mr.mr_type = PACKET_MR_PROMISC;
+
+	if (setsockopt(fd, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &mr, sizeof(mr)) < 0) {
+		perror("setsockopt(PACKET_MR_PROMISC) failed");
+		return (1);
+	}
 
 	return (0);
-nla_put_failure:
-	return -ENOBUFS;
 }
