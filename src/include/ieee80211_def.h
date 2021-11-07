@@ -22,7 +22,7 @@ struct rx_info
 	uint32_t ri_freq;
 	uint32_t ri_rate;
 	uint32_t ri_antenna;
-} __packed;
+};
 
 /* IEEE 802.11 PLCP header */
 struct ieee80211_plcp_hdr {
@@ -31,7 +31,7 @@ struct ieee80211_plcp_hdr {
 	uint8_t	i_service;
 	uint16_t	i_length;
 	uint16_t	i_crc;
-} __packed;
+};
 
 #define IEEE80211_PLCP_SFD      0xF3A0
 #define IEEE80211_PLCP_SERVICE  0x00
@@ -48,7 +48,7 @@ struct ieee80211_frame {
 	uint8_t	i_seq[2];
 	/* possibly followed by addr4[IEEE80211_ADDR_LEN]; */
 	/* see below */
-} __packed;
+};
 
 struct ieee80211_qosframe {
 	uint8_t	i_fc[2];
@@ -60,7 +60,7 @@ struct ieee80211_qosframe {
 	uint8_t	i_qos[2];
 	/* possibly followed by addr4[IEEE80211_ADDR_LEN]; */
 	/* see below */
-} __packed;
+};
 
 struct ieee80211_qoscntl {
 	uint8_t	i_qos[2];
@@ -74,7 +74,7 @@ struct ieee80211_frame_addr4 {
 	uint8_t	i_addr3[IEEE80211_ADDR_LEN];
 	uint8_t	i_seq[2];
 	uint8_t	i_addr4[IEEE80211_ADDR_LEN];
-} __packed;
+};
 
 
 struct ieee80211_qosframe_addr4 {
@@ -86,7 +86,7 @@ struct ieee80211_qosframe_addr4 {
 	uint8_t	i_seq[2];
 	uint8_t	i_addr4[IEEE80211_ADDR_LEN];
 	uint8_t	i_qos[2];
-} __packed;
+};
 
 #define	IEEE80211_FC0_VERSION_MASK		0x03
 #define	IEEE80211_FC0_VERSION_SHIFT		0
@@ -194,7 +194,7 @@ struct ieee80211_wme_info {
 	uint8_t	wme_subtype;	/* OUI subtype */
 	uint8_t	wme_version;	/* spec revision */
 	uint8_t	wme_info;	/* QoS info */
-} __packed;
+};
 
 /*
  * WME/802.11e Tspec Element
@@ -222,7 +222,7 @@ struct ieee80211_wme_tspec {
 	uint8_t	ts_delay[4];
 	uint8_t	ts_surplus[2];
 	uint8_t	ts_medium_time[2];
-} __packed;
+};
 
 /*
  * WME AC parameter field
@@ -231,7 +231,7 @@ struct ieee80211_wme_acparams {
 	uint8_t	acp_aci_aifsn;
 	uint8_t	acp_logcwminmax;
 	uint16_t	acp_txop;
-} __packed;
+};
 
 /* WME stream classes */
 enum ieee80211_wme_ac {
@@ -279,7 +279,7 @@ struct ieee80211_wme_param {
 #define	WME_QOSINFO_COUNT	0x0f	/* Mask for param count field */
 	uint8_t	param_reserved;
 	struct ieee80211_wme_acparams	params_acParams[WME_NUM_AC];
-} __packed;
+};
 
 /*
  * Management Notification Frame
@@ -289,7 +289,7 @@ struct ieee80211_mnf {
 	uint8_t	mnf_action;
 	uint8_t	mnf_dialog;
 	uint8_t	mnf_status;
-} __packed;
+};
 #define	MNF_SETUP_REQ	0
 #define	MNF_SETUP_RESP	1
 #define	MNF_TEARDOWN	2
@@ -303,7 +303,7 @@ struct ieee80211_frame_min {
 	uint8_t	i_addr1[IEEE80211_ADDR_LEN];
 	uint8_t	i_addr2[IEEE80211_ADDR_LEN];
 	/* FCS */
-} __packed;
+};
 
 struct ieee80211_frame_rts {
 	uint8_t	i_fc[2];
@@ -311,21 +311,21 @@ struct ieee80211_frame_rts {
 	uint8_t	i_ra[IEEE80211_ADDR_LEN];
 	uint8_t	i_ta[IEEE80211_ADDR_LEN];
 	/* FCS */
-} __packed;
+};
 
 struct ieee80211_frame_cts {
 	uint8_t	i_fc[2];
 	uint8_t	i_dur[2];
 	uint8_t	i_ra[IEEE80211_ADDR_LEN];
 	/* FCS */
-} __packed;
+};
 
 struct ieee80211_frame_ack {
 	uint8_t	i_fc[2];
 	uint8_t	i_dur[2];
 	uint8_t	i_ra[IEEE80211_ADDR_LEN];
 	/* FCS */
-} __packed;
+};
 
 struct ieee80211_frame_pspoll {
 	uint8_t	i_fc[2];
@@ -333,7 +333,7 @@ struct ieee80211_frame_pspoll {
 	uint8_t	i_bssid[IEEE80211_ADDR_LEN];
 	uint8_t	i_ta[IEEE80211_ADDR_LEN];
 	/* FCS */
-} __packed;
+};
 
 struct ieee80211_frame_cfend {		/* NB: also CF-End+CF-Ack */
 	uint8_t	i_fc[2];
@@ -341,7 +341,7 @@ struct ieee80211_frame_cfend {		/* NB: also CF-End+CF-Ack */
 	uint8_t	i_ra[IEEE80211_ADDR_LEN];
 	uint8_t	i_bssid[IEEE80211_ADDR_LEN];
 	/* FCS */
-} __packed;
+};
 
 static __inline int
 ieee80211_has_seq(const struct ieee80211_frame *wh)
@@ -438,7 +438,7 @@ struct ieee80211_ie_wpa {
 	uint16_t	wpa_caps;	/* 802.11i capabilities */
 	uint16_t	wpa_pmkidcnt;	/* 802.11i pmkid count */
 	uint16_t	wpa_pmkids[8];	/* 802.11i pmkids */
-} __packed;
+};
 
 /*
  * Management information element payloads.
@@ -486,20 +486,20 @@ struct ieee80211_tim_ie {
 	uint8_t	tim_period;		/* DTIM period */
 	uint8_t	tim_bitctl;		/* bitmap control */
 	uint8_t	tim_bitmap[1];		/* variable-length bitmap */
-} __packed;
+};
 
 struct ieee80211_band {
 	uint8_t schan;			/* starting channel */
 	uint8_t nchan;			/* number channels */
 	uint8_t maxtxpwr;		/* tx power cap */
-} __packed;
+};
 
 struct ieee80211_country_ie {
 	uint8_t	ie;			/* IEEE80211_ELEMID_COUNTRY */
 	uint8_t	len;
 	uint8_t	cc[3];			/* ISO CC+(I)ndoor/(O)utdoor */
 	struct ieee80211_band band[4];		/* up to 4 sub bands */
-} __packed;
+};
 
 #define IEEE80211_CHALLENGE_LEN		128
 

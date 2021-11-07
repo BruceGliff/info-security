@@ -20,19 +20,23 @@
 #include <sys/ioctl.h>
 #include <errno.h>
 
+//from library
+#include <linux/nl80211.h>
+#include <netlink/genl/genl.h>
+#include <netlink/genl/family.h>
+#include <netlink/genl/ctrl.h>
+#include <netlink/msg.h>
+#include <netlink/attr.h>
+#include <linux/genetlink.h>
+
+// To resolve net/if.h and linux/if.h conflict
+extern "C" unsigned int if_nametoindex(const char * __ifname) throw();
 struct priv_linux
 {
 	int fd_in, arptype_in;
 	int fd_out, arptype_out;
 	int fd_main;
 	int fd_rtc;
-
-	// DRIVER_TYPE drivertype; /* inited to DT_UNKNOWN on allocation by wi_alloc */
-
-	// FILE * f_cap_in;
-
-	// struct pcap_file_header pfh_in;
-
 	int sysfs_inject;
 	int channel;
 	int freq;
@@ -48,26 +52,80 @@ struct priv_linux
 	int inject_wlanng;
 };
 
-wif::wif(char const * iface) {	
-  assert(iface && iface[0] && "iface is NULL");
+struct nl80211_state
+{
+	struct nl_sock * nl_sock;
+	struct nl_cache * nl_cache;
+	struct genl_family * nl80211;
+} state;
 
-  wi_priv = malloc(sizeof(priv_linux));
-  linux_nl80211_init(&state);
-	wi->wi_set_channel = linux_set_channel_nl80211;
-	wi->wi_close = linux_close_nl80211;
-  do_linux_open(iface);
+static int chan;
+static int openraw(char const * iface, int fd, int * arptype);
+static int linux_nl80211_init(struct nl80211_state * state);
+static void do_free(wif * wi);
 
-	strncpy(wi_interface, iface, sizeof(wi_interface) - 1);
-	wi_interface[sizeof(wi_interface) - 1] = 0;
+wif::wif(char const * Iface) {	
+  assert(Iface && Iface[0] && "iface is NULL");
+  open(Iface);
 }
 
-static priv_linux * wi_priv(wif * wi) {
-  return static_cast<priv_linux*>(wi->wi_priv);
+priv_linux * wif::wi_priv() {
+  return static_cast<priv_linux*>(priv);
 };
+char const * wif::wi_get_iface() {
+  return interface;
+}
 
+static void nl80211_cleanup(struct nl80211_state * state) {
+	genl_family_put(state->nl80211);
+	nl_cache_free(state->nl_cache);
+	nl_socket_free(state->nl_sock);
+}
+
+int wif::open(char const * Iface) {
+  priv = malloc(sizeof(priv_linux));
+  linux_nl80211_init(&state);
+  int const status = do_linux_open(Iface);
+  if (interface != Iface)
+	  strncpy(interface, Iface, sizeof(interface) - 1);
+	interface[sizeof(interface) - 1] = 0;
+  return status;
+}
+
+wif::~wif() {
+  close();
+}
+
+int wif::reopen() {
+  close();
+  return open(interface);
+}
+
+void wif::close() {
+	priv_linux * pl = wi_priv();
+	nl80211_cleanup(&state);
+
+	if (pl->fd_in) ::close(pl->fd_in);
+	if (pl->fd_out) ::close(pl->fd_out);
+
+	do_free(this);
+}
+
+static void do_free(wif * wi) {
+	priv_linux * pl = wi->wi_priv();
+
+	if (pl->wlanctlng) free(pl->wlanctlng);
+	if (pl->iwpriv) free(pl->iwpriv);
+	if (pl->iwconfig) free(pl->iwconfig);
+	if (pl->ifconfig) free(pl->ifconfig);
+	if (pl->wl) free(pl->wl);
+	if (pl->main_if) free(pl->main_if);
+
+	free(pl);
+}
 
 int wif::do_linux_open(char const * iface) {
-	priv_linux * dev = ::wi_priv(this);
+	priv_linux * dev = wi_priv();
 	/* open raw socks */
 	if ((dev->fd_in = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
 		perror("socket(PF_PACKET) failed");
@@ -103,11 +161,45 @@ close_in:
 	return 1;
 }
 
-static int openraw(
-				   char const * iface,
-				   int fd,
-				   int * arptype)
-{
+static int linux_nl80211_init(struct nl80211_state * state) {
+	int err{0};
+
+	state->nl_sock = nl_socket_alloc();
+
+	if (!state->nl_sock) {
+		fprintf(stderr, "Failed to allocate netlink socket.\n");
+		return -ENOMEM;
+	}
+
+	if (genl_connect(state->nl_sock)) {
+		fprintf(stderr, "Failed to connect to generic netlink.\n");
+		err = -ENOLINK;
+		goto out_handle_destroy;
+	}
+
+	if (genl_ctrl_alloc_cache(state->nl_sock, &state->nl_cache)) {
+		fprintf(stderr, "Failed to allocate generic netlink cache.\n");
+		err = -ENOMEM;
+		goto out_handle_destroy;
+	}
+
+	state->nl80211 = genl_ctrl_search_by_name(state->nl_cache, "nl80211");
+	if (!state->nl80211) {
+		fprintf(stderr, "nl80211 not found.\n");
+		err = -ENOENT;
+		goto out_cache_free;
+	}
+
+	return 0;
+
+out_cache_free:
+	nl_cache_free(state->nl_cache);
+out_handle_destroy:
+	nl_socket_free(state->nl_sock);
+	return err;
+}
+
+static int openraw(char const * iface, int fd, int * arptype) {
   assert(iface && arptype);
 
 	struct ifreq ifr;
@@ -160,11 +252,8 @@ static int openraw(
 	return 0;
 }
 
-int wif::read(unsigned char * buf,
-					    int count,
-					    struct rx_info * ri)
-{
-	struct priv_linux * dev = ::wi_priv(this);
+int wif::read(unsigned char * buf, int count, rx_info * ri) {
+	priv_linux * dev = wi_priv();
 	unsigned char tmpbuf[4096] __attribute__((aligned(8)));
 
 	int caplen, n, got_signal, got_noise, got_channel, fcs_removed;
@@ -210,8 +299,7 @@ int wif::read(unsigned char * buf,
 
       case IEEE80211_RADIOTAP_DBM_ANTNOISE:
       case IEEE80211_RADIOTAP_DB_ANTNOISE:
-        if (!got_noise)
-        {
+        if (!got_noise) {
           if (*iterator.this_arg < 127)
             ri->ri_noise = *iterator.this_arg;
           else
@@ -236,8 +324,7 @@ int wif::read(unsigned char * buf,
         /* is the CRC visible at the end?
         * remove
         */
-        if (*iterator.this_arg & IEEE80211_RADIOTAP_F_FCS)
-        {
+        if (*iterator.this_arg & IEEE80211_RADIOTAP_F_FCS) {
           fcs_removed = 1;
           caplen -= 4;
         }
@@ -261,26 +348,19 @@ int wif::read(unsigned char * buf,
 }
 
 int wif::fd() {
-	struct priv_linux * pl = ::wi_priv(this);
+	priv_linux * pl = wi_priv();
 	return pl->fd_in;
 }
 
-static int ieee80211_channel_to_frequency(int chan)
-{
-	if (chan < 14) return 2407 + chan * 5;
-
-	if (chan == 14) return 2484;
-
-	/* FIXME: dot11ChannelStartingFactor (802.11-2007 17.3.8.3.2) */
-	return (chan + 1000) * 5;
+static int ieee80211_channel_to_frequency(int channel) {
+	if (channel < 14) return 2407 + channel * 5;
+	if (channel == 14) return 2484;
+	return (channel + 1000) * 5;
 }
 
-static int
-linux_set_ht_channel_nl80211(struct wif * wi, int channel)
-{
-	struct priv_linux * dev = wi_priv(wi);
+int wif::set_channel(int channel) {
+	priv_linux * dev = wi_priv();
 	char s[32];
-	// int pid, status;
 
 	unsigned int devid;
 	struct nl_msg * msg;
@@ -289,13 +369,12 @@ linux_set_ht_channel_nl80211(struct wif * wi, int channel)
 	memset(s, 0, sizeof(s));
 	chan = channel;
 
-	devid = if_nametoindex(wi->wi_interface);
+	devid = if_nametoindex(interface);
 	freq = ieee80211_channel_to_frequency(channel);
 	msg = nlmsg_alloc();
-	if (!msg)
-	{
+	if (!msg) {
 		fprintf(stderr, "failed to allocate netlink message\n");
-		return 2;
+		return -1;
 	}
 
 	genlmsg_put(msg,
@@ -306,11 +385,10 @@ linux_set_ht_channel_nl80211(struct wif * wi, int channel)
 				0,
 				NL80211_CMD_SET_WIPHY,
 				0);
-
+        
+	unsigned ht = NL80211_CHAN_NO_HT;
 	NLA_PUT_U32(msg, NL80211_ATTR_IFINDEX, devid);
 	NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_FREQ, freq);
-
-	unsigned ht = NL80211_CHAN_NO_HT;
 	NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE, ht);
 
 	nl_send_auto_complete(state.nl_sock, msg);
