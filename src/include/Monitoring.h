@@ -7,6 +7,7 @@ class Monitor {
 
   std::vector<std::string> m_Ifaces{};
   std::vector<std::string>::const_iterator m_PreferedIface{};
+  std::string m_Monitor{};
 
   void SelectPreferedIface();
   bool CheckIfaceForValue(std::string const &iface, int value) const;

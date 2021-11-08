@@ -23,6 +23,7 @@ Monitor::Monitor() {
   SelectPreferedIface();
   assert(CheckIfaceForValue(*m_PreferedIface, 1) &&
          "interface already in Monitor mode");
+  m_Monitor = *m_PreferedIface + "mon";
   SetMonitor();
 }
 
@@ -80,11 +81,10 @@ void Monitor::SetIface(std::string const &iface, char const *status) const {
 void Monitor::SetMonitor() const {
   SetIfaceDown(*m_PreferedIface);
   pid_t pid = fork();
-  std::string name = *m_PreferedIface + "mon";
   if (pid == 0) {
     char const *params[] = {"iw",        "phy",     "phy0",
-                            "interface", "add",     name.c_str(),
-                            "type",      "Monitor", 0};
+                            "interface", "add",     m_Monitor.c_str(),
+                            "type",      "monitor", 0};
     char *const *p = const_cast<char *const *>(params);
     execv("/usr/sbin/iw", p);
     perror("execv: ");
@@ -102,20 +102,20 @@ void Monitor::SetMonitor() const {
   // checks that value of Monitor is 803
   // then setChennels
   // if check failes -> stop mon abort
-  if (!CheckIfaceForValue(name, 803)) {
+  if (!CheckIfaceForValue(m_Monitor, 803)) {
     std::cerr << "newly create Monitor not in Monitor mode!\n";
     std::cerr << "probably you should remove new Monitor by:\n";
-    std::cerr << "iw " << name << " del\n";
+    std::cerr << "iw " << m_Monitor << " del\n";
     std::cerr << "and turn on " << *m_PreferedIface << "\n";
     assert(1 && "Monitor setting fail");
   }
   sleep(1);
   // setup Monitor up
-  SetIfaceUp(name);
+  SetIfaceUp(m_Monitor);
   // Set channel
   pid = fork();
   if (pid == 0) {
-    char const *params[] = {"iw", "dev", name.c_str(), "set", "channel",
+    char const *params[] = {"iw", "dev", m_Monitor.c_str(), "set", "channel",
                             "10", 0}; // 10 by default
     char *const *p = const_cast<char *const *>(params);
     execv("/usr/sbin/iw", p);
@@ -149,7 +149,7 @@ void Monitor::SetMonitor() const {
 }
 
 Monitor::~Monitor() {
-  sleep(10);
+  sleep(1);
   pid_t pid = fork();
   if (pid == 0) {
     char const *params[] = {"iw",        "phy",     "phy0",
@@ -164,17 +164,17 @@ Monitor::~Monitor() {
   int ret{99};
   wait(&ret);
 
-  if (ret != 0) {
-    std::cerr << "everything is broken!\n";
-    exit(-1);
-  }
+  // WARN it returns 9!
+  // if (ret != 0) {
+  //   std::cerr << "1 everything is broken!\n";
+  //   exit(-1);
+  // }
 
-  std::string name = *m_PreferedIface + "mon";
-  SetIfaceDown(name);
+  SetIfaceDown(m_Monitor);
   // Deleting iface
   pid = fork();
   if (pid == 0) {
-    char const *params[] = {"iw", name.c_str(), "del", 0};
+    char const *params[] = {"iw", m_Monitor.c_str(), "del", 0};
     char *const *p = const_cast<char *const *>(params);
     execv("/usr/sbin/iw", p);
     perror("execv: ");
@@ -182,9 +182,8 @@ Monitor::~Monitor() {
   }
   assert(pid && "fork failed");
   wait(&ret);
-
   if (ret != 0) {
-    std::cerr << "everything is broken!\n";
+    std::cerr << "2 everything is broken!\n";
     exit(-1);
   }
 
@@ -192,5 +191,5 @@ Monitor::~Monitor() {
 }
 
 char const * Monitor::GetIface() const {
-  return m_PreferedIface->c_str();
+  return m_Monitor.c_str();
 }
