@@ -47,6 +47,8 @@ struct ieee80211_radiotap_header {
 /* version is always 0 */
 #define PKTHDR_RADIOTAP_VERSION	0
 
+int getChannelFromFrequency(int frequency);
+
 /* see the radiotap website for the descriptions */
 enum ieee80211_radiotap_presence {
 	IEEE80211_RADIOTAP_TSFT = 0,

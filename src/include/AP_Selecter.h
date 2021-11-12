@@ -7,7 +7,8 @@
 struct AP_info_tiny {
   uint8_t bssid[6] {0};
   uint8_t essid[ESSID_LENGTH + 1] {0};
-  AP_info_tiny(uint8_t * bssid_in, uint8_t * essid_in);
+  uint8_t channel {0};
+  AP_info_tiny(uint8_t * bssid_in, uint8_t * essid_in, uint8_t channel_in);
   void Print();
 };
 

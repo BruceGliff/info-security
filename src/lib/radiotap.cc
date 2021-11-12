@@ -14,6 +14,19 @@
 #include "radiotap_iter.h"
 #include "platform.h"
 
+
+int getChannelFromFrequency(int frequency) {
+	if (frequency >= 2412 && frequency <= 2472)
+		return (frequency - 2407) / 5;
+	else if (frequency == 2484)
+		return 14;
+
+	else if (frequency >= 4920 && frequency <= 6100)
+		return (frequency - 5000) / 5;
+	else
+		return -1;
+}
+
 /* function prototypes and related defs are in radiotap_iter.h */
 
 static const struct radiotap_align_size rtap_namespace_sizes[] = {

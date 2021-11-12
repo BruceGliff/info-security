@@ -31,7 +31,7 @@ AP_Selecter::AP_Selecter(char const * Iface) {
 void AP_Selecter::GetAPs(AP_info * AP_1st) {
   while (AP_1st != NULL) {
     if (strlen((char*)AP_1st->essid))
-    m_AP_Chain.emplace_back(AP_1st->bssid, AP_1st->essid);
+    m_AP_Chain.emplace_back(AP_1st->bssid, AP_1st->essid, AP_1st->channel);
     AP_1st = AP_1st->next;
   }
 }
@@ -39,13 +39,13 @@ void AP_Selecter::GetAPs(AP_info * AP_1st) {
 void AP_Selecter::ChooseAP() {
   PrintAPs();
   bool isSelectBad = true;
-  int value {0};
+  uint value {0};
   while (isSelectBad) {
     std::cout << "\nEnter valid AcessPoint number: ";
     std::cin.clear();
     std::cin >> value;
 
-    isSelectBad = !(value > 0 && value < m_AP_Chain.size());
+    isSelectBad = !(value < m_AP_Chain.size());
   }
 
   m_PreferedAP = m_AP_Chain.begin() + value;
@@ -63,11 +63,13 @@ void AP_Selecter::PrintAPs() {
   }
 }
 
-AP_info_tiny::AP_info_tiny(uint8_t * bssid_in, uint8_t * essid_in) {
+AP_info_tiny::AP_info_tiny(uint8_t * bssid_in, uint8_t * essid_in, uint8_t channel_in) {
   memcpy(bssid, bssid_in, sizeof(bssid));
   memcpy(essid, essid_in, ESSID_LENGTH + 1);
+	channel = channel_in;
 }
 void AP_info_tiny::Print() {
+	printf("{%02d} - ", channel);
   for (int i = 0; i != 5; ++i)
     printf("%02x:", bssid[i]);
   printf("%02x   %s\n", bssid[5], essid);
@@ -84,9 +86,7 @@ static void release(AP_info * AP_Node) {
 	}
 }
 
-static int bg_chans[] = {1, 7, 13, 2, 8, 3, 14, 9, 4, 10, 5, 11, 6, 12, 0};
-
-static void printAP(void);
+static int bg_chans[] = {10, 7, 13, 2, 8, 3, 14, 9, 4, 10, 5, 11, 6, 12, 0};
 
 /* bunch of global stuff */
 static struct local_options
@@ -102,7 +102,7 @@ static struct local_options
 } lopt;
 
 static int add_packet(unsigned char * h80211,
-						   int caplen) {
+						   int caplen, int ch) {
   assert(h80211 && "packet is NULL");
 	size_t n;
 	unsigned char *p;
@@ -160,6 +160,7 @@ static int add_packet(unsigned char * h80211,
 		ap_cur->prev = ap_prv;
 		lopt.ap_end = ap_cur;
 		memset(ap_cur->essid, 0, ESSID_LENGTH + 1);
+		ap_cur->channel = ch;
 	}
 
 
@@ -193,6 +194,10 @@ static void sighandler(int signum) {
 	if (signum == SIGINT || signum == SIGTERM)
 		lopt.do_exit = 1;
 
+	if (signum == SIGUSR1) {
+		read(lopt.ch_pipe[0], &lopt.channel, sizeof(int));
+	}
+
 	if (signum == SIGSEGV) exit(1);
 
 	if (signum == SIGALRM) exit(1);
@@ -225,8 +230,6 @@ static AP_info * launch(char const * Iface) {
 	int fd_raw;
 	struct rx_info rx; // rx remove lots of empty ACs
 	char ifnam[64];
-
-	AP_info *ap_cur, *ap_next;
 
 	unsigned char buffer[4096];
 	unsigned char * h80211;
@@ -266,7 +269,7 @@ static AP_info * launch(char const * Iface) {
 
   pid_t child_pid = fork();
 	if (!child_pid) {
-		strncpy(ifnam, wi_get_ifname(wi), sizeof(ifnam));
+		strncpy(ifnam, wi_get_ifname(wi), ESSID_LENGTH);
     wi_close(wi);
 		wi = wi_open(ifnam);
 		if (!wi) {
@@ -325,7 +328,8 @@ static AP_info * launch(char const * Iface) {
 				perror("iface down");
 				break;
 			}
-			add_packet(h80211, caplen);
+			int ch = lopt.channel;
+			add_packet(h80211, caplen, ch);
 		}
 	}
   wi_close(wi);
@@ -335,19 +339,19 @@ static AP_info * launch(char const * Iface) {
 	return lopt.ap_1st;
 }
 
-static void printAP() {
-	FILE * f = fopen("st.out", "w");
-	if (!f) {
-		perror("st.out");
-		exit(-1);
-	}
-	AP_info * ap_curr = lopt.ap_1st;
-	while (ap_curr) {
-		for (int i = 0; i != 5; ++i)
-			fprintf(f, "%02x:", ap_curr->bssid[i]);
-		fprintf(f, "%02x   %s\n", ap_curr->bssid[5], ap_curr->essid);
-		ap_curr = ap_curr->next;
-	}
-	fprintf(f, "\n");
-	fclose(f);
-}
+// static void printAP() {
+// 	FILE * f = fopen("st.out", "w");
+// 	if (!f) {
+// 		perror("st.out");
+// 		exit(-1);
+// 	}
+// 	AP_info * ap_curr = lopt.ap_1st;
+// 	while (ap_curr) {
+// 		for (int i = 0; i != 5; ++i)
+// 			fprintf(f, "%02x:", ap_curr->bssid[i]);
+// 		fprintf(f, "%02x   %s\n", ap_curr->bssid[5], ap_curr->essid);
+// 		ap_curr = ap_curr->next;
+// 	}
+// 	fprintf(f, "\n");
+// 	fclose(f);
+// }

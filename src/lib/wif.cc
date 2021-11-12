@@ -309,9 +309,9 @@ static int linux_read(struct wif * wi, struct timespec * ts, int * dlt, unsigned
         break;
 
       case IEEE80211_RADIOTAP_CHANNEL:
-        // ri->ri_channel = getChannelFromFrequency(
-        // 	le16toh(*(uint16_t *) iterator.this_arg));
-        // got_channel = 1;
+        ri->ri_channel = getChannelFromFrequency(
+        	le16toh(*(uint16_t *) iterator.this_arg));
+        got_channel = 1;
         break;
 
       case IEEE80211_RADIOTAP_RATE:
