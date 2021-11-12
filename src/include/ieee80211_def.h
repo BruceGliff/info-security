@@ -13,6 +13,16 @@
 /* is 802.11 address multicast/broadcast? */
 #define	IEEE80211_IS_MULTICAST(_a)	(*(_a) & 0x01)
 
+#define NULL_MAC (unsigned char *) "\x00\x00\x00\x00\x00\x00"
+#define BROADCAST (unsigned char *) "\xFF\xFF\xFF\xFF\xFF\xFF"
+#define SPANTREE (unsigned char *) "\x01\x80\xC2\x00\x00\x00"
+#define CDP_VTP (unsigned char *) "\x01\x00\x0C\xCC\xCC\xCC"
+
+static const unsigned char ZERO[33] = "\x00\x00\x00\x00\x00\x00\x00\x00"
+									  "\x00\x00\x00\x00\x00\x00\x00\x00"
+									  "\x00\x00\x00\x00\x00\x00\x00\x00"
+									  "\x00\x00\x00\x00\x00\x00\x00\x00";
+
 struct rx_info
 {
 	uint64_t ri_mactime;

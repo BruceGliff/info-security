@@ -36,7 +36,7 @@ void AP_Selecter::GetAPs(AP_info * AP_1st) {
   }
 }
 
-void AP_Selecter::ChooseAP() {
+AP_Selecter & AP_Selecter::ChooseAP() {
   PrintAPs();
   bool isSelectBad = true;
   uint value {0};
@@ -49,6 +49,7 @@ void AP_Selecter::ChooseAP() {
   }
 
   m_PreferedAP = m_AP_Chain.begin() + value;
+	return *this;
 }
 
 AP_info_tiny const & AP_Selecter::GetPreferedAP() const {
@@ -68,7 +69,7 @@ AP_info_tiny::AP_info_tiny(uint8_t * bssid_in, uint8_t * essid_in, uint8_t chann
   memcpy(essid, essid_in, ESSID_LENGTH + 1);
 	channel = channel_in;
 }
-void AP_info_tiny::Print() {
+void AP_info_tiny::Print() const {
 	printf("{%02d} - ", channel);
   for (int i = 0; i != 5; ++i)
     printf("%02x:", bssid[i]);
@@ -102,7 +103,7 @@ static struct local_options
 } lopt;
 
 static int add_packet(unsigned char * h80211,
-						   int caplen, int ch) {
+						   int caplen) {
   assert(h80211 && "packet is NULL");
 	size_t n;
 	unsigned char *p;
@@ -160,7 +161,6 @@ static int add_packet(unsigned char * h80211,
 		ap_cur->prev = ap_prv;
 		lopt.ap_end = ap_cur;
 		memset(ap_cur->essid, 0, ESSID_LENGTH + 1);
-		ap_cur->channel = ch;
 	}
 
 
@@ -183,6 +183,10 @@ static int add_packet(unsigned char * h80211,
 				memset(ap_cur->essid, 0, ESSID_LENGTH + 1);
 				memcpy(ap_cur->essid, p + 2, n);
 			}
+
+			// NEW MY CHANGE
+			if (p[0] == 0x03)
+				ap_cur->channel = p[2];
 
 			p += 2 + p[1];
 		}
@@ -300,7 +304,8 @@ static AP_info * launch(char const * Iface) {
 
 	tv0.tv_sec = lopt.update_s;
 	tv0.tv_usec = (lopt.update_s == 0) ? REFRESH_RATE : 0;
-	// MYW
+	
+	std::cout << "Scanning AcessPoints for 5 seconds." << std::endl;
 	while (end - start < 5)
 	{
 		end = time(NULL);
@@ -328,8 +333,7 @@ static AP_info * launch(char const * Iface) {
 				perror("iface down");
 				break;
 			}
-			int ch = lopt.channel;
-			add_packet(h80211, caplen, ch);
+			add_packet(h80211, caplen);
 		}
 	}
   wi_close(wi);
