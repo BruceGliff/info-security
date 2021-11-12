@@ -9,7 +9,7 @@ struct AP_info_tiny {
   uint8_t essid[ESSID_LENGTH + 1] {0};
   uint8_t channel {0};
   AP_info_tiny(uint8_t * bssid_in, uint8_t * essid_in, uint8_t channel_in);
-  void Print();
+  void Print() const;
 };
 
 // forward declaration
@@ -32,6 +32,6 @@ public:
 
   ~AP_Selecter() = default;
 
-  void ChooseAP();
+  AP_Selecter & ChooseAP();
   AP_info_tiny const & GetPreferedAP() const;
 };

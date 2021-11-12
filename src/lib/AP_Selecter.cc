@@ -36,7 +36,7 @@ void AP_Selecter::GetAPs(AP_info * AP_1st) {
   }
 }
 
-void AP_Selecter::ChooseAP() {
+AP_Selecter & AP_Selecter::ChooseAP() {
   PrintAPs();
   bool isSelectBad = true;
   uint value {0};
@@ -49,6 +49,7 @@ void AP_Selecter::ChooseAP() {
   }
 
   m_PreferedAP = m_AP_Chain.begin() + value;
+	return *this;
 }
 
 AP_info_tiny const & AP_Selecter::GetPreferedAP() const {
@@ -68,7 +69,7 @@ AP_info_tiny::AP_info_tiny(uint8_t * bssid_in, uint8_t * essid_in, uint8_t chann
   memcpy(essid, essid_in, ESSID_LENGTH + 1);
 	channel = channel_in;
 }
-void AP_info_tiny::Print() {
+void AP_info_tiny::Print() const {
 	printf("{%02d} - ", channel);
   for (int i = 0; i != 5; ++i)
     printf("%02x:", bssid[i]);
