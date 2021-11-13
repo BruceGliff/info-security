@@ -35,6 +35,7 @@ static struct wif * linux_open(char const * iface);
 static int openraw(struct priv_linux * dev, char const * iface, int fd, int * arptype, unsigned char * mac);
 static int do_linux_open(struct wif * wi, char const * iface);
 static int linux_read(struct wif * wi, struct timespec * ts, int * dlt, unsigned char * buf, int count, struct rx_info * ri);
+static int linux_write(struct wif * wi, struct timespec * ts, int dlt, unsigned char * buf, int count, struct tx_info * ti);
 static int linux_nl80211_init(struct nl80211_state * state);
 static int linux_set_channel(struct wif * wi, int channel);
 static void linux_close_nl80211(struct wif * wi);
@@ -93,6 +94,7 @@ static struct wif * linux_open(char const * iface) {
 	wi = wi_alloc(sizeof(*pl));
 	if (!wi) return NULL;
 	wi->wi_read = linux_read;
+	wi->wi_write = linux_write;
 	linux_nl80211_init(&state);
 	wi->wi_set_channel = linux_set_channel;
 	wi->wi_close = linux_close_nl80211;
@@ -465,4 +467,69 @@ static int openraw(struct priv_linux * dev, char const * iface, int fd, int * ar
 	}
 
 	return (0);
+}
+
+static int linux_write(struct wif * wi, struct timespec * ts, int dlt, unsigned char * buf, int count, struct tx_info * ti)
+{
+	struct priv_linux * dev = wi_priv(wi);
+	unsigned char maddr[6];
+	int ret, usedrtap = 0;
+	unsigned char tmpbuf[4096];
+	unsigned char rate;
+	unsigned short int * p_rtlen;
+
+	unsigned char u8aRadiotap[] __attribute__((aligned(8))) = {
+		0x00,
+		0x00, // <-- radiotap version
+		0x0c,
+		0x00, // <- radiotap header length
+		0x04,
+		0x80,
+		0x00,
+		0x00, // <-- bitmap
+		0x00, // <-- rate
+		0x00, // <-- padding for natural alignment
+		0x18,
+		0x00, // <-- TX flags
+	};
+
+	/* Pointer to the radiotap header length field for later use. */
+	p_rtlen = (unsigned short int *) (u8aRadiotap + 2); //-V1032
+
+	if ((unsigned) count > sizeof(tmpbuf) - 22) return -1;
+
+	/* XXX honor ti */
+	if (ti)
+	{
+	}
+
+	(void) ts;
+	(void) dlt;
+
+	rate = dev->rate;
+
+	u8aRadiotap[8] = rate;
+
+	memcpy(tmpbuf, u8aRadiotap, sizeof(u8aRadiotap));
+	memcpy(tmpbuf + sizeof(u8aRadiotap), buf, count);
+	count += sizeof(u8aRadiotap);
+
+	buf = tmpbuf;
+	usedrtap = 1;
+
+	ret = write(dev->fd_out, buf, count);
+
+	if (ret < 0)
+	{
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOBUFS
+			|| errno == ENOMEM)
+		{
+			usleep(10000);
+			return (0);
+		}
+
+		perror("write failed");
+		return (-1);
+	}
+	return (ret);
 }
