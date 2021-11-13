@@ -18,13 +18,14 @@
 
 ST_Scanner::ST_Scanner(AP_info_tiny const &AP, char const * Iface)
   : m_lopt{}
+	, m_Deauth{AP.bssid, Iface}
 	, m_Scanner{scanning, AP.bssid, AP.channel, Iface, std::ref(m_lopt)}
-	, m_Printer{printing, std::ref(m_lopt), std::ref(m_Stations)} {
-}
+	, m_Deauthenticator{deauthentacating, std::ref(m_lopt), std::ref(m_Stations), std::ref(m_Deauth)}
+{}
 
 ST_Scanner::~ST_Scanner() {
   m_Scanner.join();
-	m_Printer.join();
+	m_Deauthenticator.join();
 }
 
 ST_info_tiny::ST_info_tiny(uint8_t const * stmac_in) {
@@ -36,9 +37,13 @@ void ST_info_tiny::Print() const {
   printf("%02x\n", stmac[5]);
 }
 
-void ST_Scanner::printing(local_options & lopt, Stations & stations) {
+void ST_Scanner::deauthentacating(local_options & lopt, Stations & stations, Deauth & deauth) {
+
+	static int sent = 0;
 
 	while(1) {
+
+		std::vector<ST_info_tiny> sts;
 
 		lopt.m_data.lock();
 		// data can be deleted!
@@ -47,20 +52,22 @@ void ST_Scanner::printing(local_options & lopt, Stations & stations) {
 			break;
 		}
 
-		stations.m_data.lock();
-		int size = stations.m_st_vec.size();
+		int size = sent;
 		int new_st = lopt.new_st;
 
 		ST_info *st = lopt.st_1st;
 		while (size--)
 			st = st->next;
 		
-		size = stations.m_st_vec.size(); //this can be not printing but hacking!
-		for (int i = 0; i != new_st - size; ++i)
-			stations.m_st_vec.emplace_back(st->stmac);
+		for (; new_st != sent; ++sent)
+			sts.emplace_back(st->stmac);
+			//stations.m_st_vec.emplace_back(st->stmac);
+			// deauth.SendPacket(st->stmac);
 
-		stations.m_data.unlock();
 		lopt.m_data.unlock();
+
+		for (auto &&x : sts)
+			deauth.SendPacket(x.stmac);
 
 		// fputs("\033[A\033[2K\033[A\033[2K", stdout);
 		// rewind(stdout);
