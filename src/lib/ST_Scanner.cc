@@ -5,6 +5,8 @@
 #include <station.h>
 #include <pcap.h>
 
+#include <iostream>
+
 #include <cstring>
 #include <cstdio>
 #include <cassert>
@@ -13,13 +15,16 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+
 ST_Scanner::ST_Scanner(AP_info_tiny const &AP, char const * Iface)
-  : m_Scanner(scanning, AP.bssid, AP.channel, Iface) {
-    AP.Print();
+  : m_lopt{}
+	, m_Scanner{scanning, AP.bssid, AP.channel, Iface, std::ref(m_lopt)}
+	, m_Printer{printing, std::ref(m_lopt), std::ref(m_Stations)} {
 }
 
 ST_Scanner::~ST_Scanner() {
   m_Scanner.join();
+	m_Printer.join();
 }
 
 ST_info_tiny::ST_info_tiny(uint8_t const * stmac_in) {
@@ -31,16 +36,49 @@ void ST_info_tiny::Print() const {
   printf("%02x\n", stmac[5]);
 }
 
-static struct local_options {
-	struct AP_info *ap_1st, *ap_end;
-	struct ST_info *st_1st, *st_end;
+void ST_Scanner::printing(local_options & lopt, Stations & stations) {
 
-  uint8_t f_bssid[6];
-	int channel;
-	volatile int do_exit;
-	char const * s_iface;
-	FILE * f_cap;
-} lopt;
+	while(1) {
+
+		lopt.m_data.lock();
+		// data can be deleted!
+		if (lopt.do_exit) {
+			lopt.m_data.unlock();
+			break;
+		}
+
+		stations.m_data.lock();
+		int size = stations.m_st_vec.size();
+		int new_st = lopt.new_st;
+
+		ST_info *st = lopt.st_1st;
+		while (size--)
+			st = st->next;
+		
+		size = stations.m_st_vec.size(); //this can be not printing but hacking!
+		for (int i = 0; i != new_st - size; ++i)
+			stations.m_st_vec.emplace_back(st->stmac);
+
+		stations.m_data.unlock();
+		lopt.m_data.unlock();
+
+		// fputs("\033[A\033[2K\033[A\033[2K", stdout);
+		// rewind(stdout);
+		// ftruncate(1, 0);
+
+		// ST_info * st = lopt.st_1st;
+		// while(st) {
+		// 	for (int i = 0; i != 5; ++i)
+		// 		printf("%02x:", st->stmac[i]);
+		// 	printf("%02x\n", st->stmac[5]);
+		// 	st = st->next;
+		// }
+
+		// lopt.m_data.unlock();
+
+		usleep(10000);
+	}
+}
 
 // TODO specify path
 static FILE *initCapFile(/*char const * prefix*/) {
@@ -87,8 +125,9 @@ static FILE *initCapFile(/*char const * prefix*/) {
 }
 
 
-static int dump_add_packet(unsigned char * h80211, int caplen) {
+static int dump_add_packet(unsigned char * h80211, int caplen, local_options & lopt) {
   assert(h80211);
+
 	size_t n;
 	unsigned z = 0;
 	pcap_pkthdr pkh;
@@ -195,6 +234,7 @@ static int dump_add_packet(unsigned char * h80211, int caplen) {
 		memcpy(st_cur->stmac, stmac, 6);
 		st_cur->prev = st_prv;
 		lopt.st_end = st_cur;
+		++lopt.new_st;
 	}
 
 	if (st_cur->base == NULL || memcmp(ap_cur->bssid, BROADCAST, 6) != 0)
@@ -286,11 +326,9 @@ write_packet:
 	return (0);
 }
 
-void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface) {
+void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface, local_options & lopt) {
 	
 	int caplen = 0, fdh;
-	int fd_raw;
-
 	struct AP_info *ap_cur, *ap_next;
 	struct ST_info *st_cur, *st_next;
   
@@ -302,36 +340,36 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 
 	fd_set rfds;
 
-	memset(&lopt, 0, sizeof(lopt));
-
+	lopt.m_data.lock();
   lopt.channel = Ch;
-  fd_raw = -1;
   lopt.s_iface = Iface;
   memcpy(lopt.f_bssid, BSSID, 6);
+  lopt.f_cap = initCapFile();
+	lopt.m_data.unlock();
 
   wif * wi = wi_open(lopt.s_iface);
 
-  fd_raw = wi->wi_fd(wi);
+  int fd_raw = wi->wi_fd(wi);
   fdh = fd_raw;
 
   wi->wi_set_channel(wi, Ch);
 
 	/* Drop privileges */
-	if (setuid(getuid()) == -1) {
+	if (setuid(getuid()) == -1)
 		perror("setuid");
-	}
-
-  lopt.f_cap = initCapFile();
 
 	time_t start = time(NULL);
 	time_t end = time(NULL);
 	// MYWHILE
 	while (1) {
 		end = time(NULL);
-		if (lopt.do_exit || end - start > 5) {
+		lopt.m_data.lock();
+		if (lopt.do_exit){// || end - start > 5) {
 			lopt.do_exit = 1;
+			lopt.m_data.unlock();
 			break;
 		}
+		lopt.m_data.unlock();
 
 		FD_ZERO(&rfds);
     FD_SET(fd_raw, &rfds);
@@ -351,10 +389,13 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
         perror("iface down");
         break;
       }
-      dump_add_packet(h80211, caplen);
+			lopt.m_data.lock();
+      dump_add_packet(h80211, caplen, lopt);
+			lopt.m_data.unlock();
     }
 	}
 
+	lopt.m_data.lock();
   wi_close(wi);
   if (lopt.f_cap != NULL)
     fclose(lopt.f_cap);
@@ -378,6 +419,8 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 		free(st_cur);
 		st_cur = st_next;
 	}
+
+	lopt.m_data.unlock();
 
 	return;
 }
