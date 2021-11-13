@@ -3,7 +3,13 @@
 #include <thread>
 #include <stdint.h>
 
-class AP_info_tiny;
+struct AP_info_tiny;
+struct ST_info_tiny {
+  uint8_t stmac[6] {0};
+  ST_info_tiny(uint8_t const * stmac_in);
+  void Print() const;
+};
+
 
 class ST_Scanner {
 
