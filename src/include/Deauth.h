@@ -12,9 +12,12 @@ class Deauth {
 
   uint8_t const *stmac {nullptr};
 
-  int do_attack_deauth(wif * wi);
+  // int do_attack_deauth(wif * wi);
 
 public:
   Deauth(uint8_t const * bssid_in, char const * iface_in);
   int SendPacket(uint8_t const *stmac);
 };
+
+
+void sendP(char const * iface, uint8_t const * bssid_in, uint8_t const * stmac_in);
