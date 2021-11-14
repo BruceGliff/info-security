@@ -301,7 +301,8 @@ static AP_info * launch(char const * Iface) {
 
 	tv0.tv_sec = lopt.update_s;
 	tv0.tv_usec = (lopt.update_s == 0) ? REFRESH_RATE : 0;
-	// MYW
+	
+	std::cout << "Scanning AcessPoints for 5 seconds." << std::endl;
 	while (end - start < 5)
 	{
 		end = time(NULL);

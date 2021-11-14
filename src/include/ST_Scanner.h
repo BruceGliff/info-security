@@ -49,15 +49,12 @@ class ST_Scanner {
 
   local_options m_lopt;
   Stations m_Stations;
-  // Deauth m_Deauth;
 
   std::thread m_Scanner;
   std::thread m_Deauth;
-  // std::thread m_Deauthenticator;
 
   static void scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface, local_options & lopt);
   static void deauthentacating(uint8_t const * BSSID, char const * iface, local_options & lopt, path const & bin);
-  // static void deauthentacating(local_options & lopt, Stations & stations, Deauth & deauth);
 
 public:
   ST_Scanner() = delete;

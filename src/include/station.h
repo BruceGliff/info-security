@@ -24,6 +24,7 @@ struct ST_info {
 	uint8_t essid[ESSID_LENGTH + 1]; /* last associated essid     */
 	int essid_length; /* essid length of last asso */
 	int state;
+	int eapol;
 
 	int channel; /* Channel station is seen   */
 };
