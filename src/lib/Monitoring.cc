@@ -32,12 +32,16 @@ void Monitor::SelectPreferedIface() {
   for (unsigned i = 0, e = m_Ifaces.size(); i != e; ++i) {
     std::cout << i << "  " << m_Ifaces.at(i) << std::endl;
   }
-  std::cout << "Select prefered interface. Enter a number.\n";
-  unsigned i{0};
-
-  std::cin >> i;
-  assert(i < m_Ifaces.size() && "out of boundaries");
-  m_PreferedIface = m_Ifaces.begin() + i;
+  std::cout << "Select prefered interface.";
+  bool isSelectBad = true;
+  unsigned value {0};
+  while (isSelectBad) {
+    std::cout << "\nEnter interface number: ";
+    std::cin.clear();
+    std::cin >> value;
+    isSelectBad = !(value < m_Ifaces.size());
+  }
+  m_PreferedIface = m_Ifaces.begin() + value;
 }
 
 bool Monitor::CheckIfaceForValue(std::string const &iface, int value) const {

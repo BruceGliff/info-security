@@ -16,7 +16,11 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
-
+static void print(uint8_t const * in) {
+  for (int i = 0; i != 5; ++i)
+    printf("%02x:", in[i]);
+  printf("%02x", in[5]);
+}
 
 ST_Scanner::ST_Scanner(path const & bin, AP_info_tiny const &AP, char const * Iface)
   : m_lopt{}
@@ -62,6 +66,8 @@ void ST_Scanner::deauthentacating(uint8_t const * BSSID, char const * iface, loc
 			st = st->next;
 		
 		for (; new_st != sent; ++sent) {
+			std::cout << "Found new device: ";
+			print(st->stmac); std::cout << std::endl;
 			sts.emplace_back(st->stmac);
 			st = st->next;
 		}
@@ -227,11 +233,11 @@ static int dump_add_packet(unsigned char * h80211, int caplen, local_options & l
 
 
 	if (st_cur == NULL) {
-		if (!(st_cur = (struct ST_info *) calloc(1, sizeof(struct ST_info)))) {
+		if (!(st_cur = (ST_info *) calloc(1, sizeof(ST_info)))) {
 			perror("calloc failed");
 			return (1);
 		}
-		memset(st_cur, 0, sizeof(struct ST_info));
+		memset(st_cur, 0, sizeof(ST_info));
 		if (lopt.st_1st == NULL)
 			lopt.st_1st = st_cur;
 		else
@@ -304,8 +310,15 @@ skip_station:
 			}
 		}
 
-		if (st_cur->state == 7)
+		if (st_cur->state == 7) {
 			lopt.do_exit = 1;
+			if (!st_cur->eapol) {
+				st_cur->eapol = 1;
+				std::cout << "EAPOL founded: ";
+				print(st_cur->stmac); std::cout << std::endl;
+			}
+
+		}
 	}
 
 
@@ -365,9 +378,13 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 
 	time_t start = time(NULL);
 	time_t end = time(NULL);
-	time_t timing = 999999;
+	time_t timing = 999999; // it is unlimited timer if there is no EAPOL data.
 	// MYWHILE
 	bool notF = true;
+	std::cout << "Scanning from: ";
+	print(BSSID);
+	std::cout << " channel: {" << Ch << "} iface: " << Iface << std::endl;
+
 	while (end - start < timing) {
 		end = time(NULL);
 		lopt.m_data.lock();
@@ -425,10 +442,13 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 	}
 
 	st_cur = lopt.st_1st;
+
+	std::cout << "All stations: " << std::endl;
 	while (st_cur != NULL) {
-    for (int i = 0; i != 5; ++i)
-      printf("%02x:", st_cur->stmac[i]);
-    printf("%02x\n", st_cur->stmac[5]);
+    print(st_cur->stmac);
+		if (st_cur->eapol)
+			std::cout << "   EAPOL";
+		std::cout << std::endl;
 
 		st_next = st_cur->next;
 		free(st_cur);

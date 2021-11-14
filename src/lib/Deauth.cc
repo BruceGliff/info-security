@@ -18,6 +18,11 @@
 
 #define DEAUTH_REQ "\xC0\x00\x3A\x01\xCC\xCC\xCC\xCC\xCC\xCC\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\x00\x00\x07\x00"
 
+static void print(uint8_t const * in) {
+  for (int i = 0; i != 5; ++i)
+    printf("%02x:", in[i]);
+  printf("%02x", in[5]);
+}
 static inline int send_packet(struct wif * wi, void * buf, size_t count);
 
 Deauth::Deauth(uint8_t const * bssid_in, char const * iface_in)
@@ -44,18 +49,11 @@ int Deauth::SendPacket(uint8_t const * stmac_in) {
 }
 
 void sendP(char const * iface, uint8_t const * bssid_in, uint8_t const * stmac_in) {
-  printf("%s\n", iface);
   assert(stmac_in);
 
-  
-  for (int i = 0; i != 5; ++i)
-    printf("%02x:", bssid_in[i]);
-  printf("%02x\n", bssid_in[5]);
-  for (int i = 0; i != 5; ++i)
-    printf("%02x:", stmac_in[i]);
-  printf("%02x\n", stmac_in[5]);
-		/* open the replay interface */
-  // return;
+  std::cout << "Sending deauth packets to: ";
+  print(stmac_in); std::cout << std::endl;
+
   wif *wi = wi_open(iface);
   if (!wi) {
     perror("wi:");
