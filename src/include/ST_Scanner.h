@@ -3,7 +3,7 @@
 #include <thread>
 #include <mutex>
 #include <vector>
-#include <Deauth.h>
+#include <path.h>
 #include <stdint.h>
 
 struct AP_info_tiny;
@@ -49,13 +49,15 @@ class ST_Scanner {
 
   local_options m_lopt;
   Stations m_Stations;
-  Deauth m_Deauth;
+  // Deauth m_Deauth;
 
   std::thread m_Scanner;
-  std::thread m_Deauthenticator;
+  std::thread m_Deauth;
+  // std::thread m_Deauthenticator;
 
   static void scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface, local_options & lopt);
-  static void deauthentacating(local_options & lopt, Stations & stations, Deauth & deauth);
+  static void deauthentacating(uint8_t const * BSSID, char const * iface, local_options & lopt, path const & bin);
+  // static void deauthentacating(local_options & lopt, Stations & stations, Deauth & deauth);
 
 public:
   ST_Scanner() = delete;
@@ -64,7 +66,7 @@ public:
   ST_Scanner & operator=(ST_Scanner const &) = delete;
   ST_Scanner & operator=(ST_Scanner &&) = delete;
   
-  ST_Scanner(AP_info_tiny const &AP, char const * Iface);
+  ST_Scanner(path const & bin, AP_info_tiny const &AP, char const * Iface);
   ~ST_Scanner();
 
 };

