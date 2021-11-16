@@ -75,8 +75,8 @@ void ST_Scanner::deauthentacating(uint8_t const * BSSID, char const * iface, loc
 		lopt.m_data.unlock();
 
 		for (auto &&x : sts) {
-			if (x.stmac[5] != 0x38)
-				continue;
+			// if (x.stmac[5] != 0x38)
+			// 	continue;
 
 			char command[1024];
 			sprintf(command,

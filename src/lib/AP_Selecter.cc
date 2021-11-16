@@ -103,7 +103,7 @@ static struct local_options
 } lopt;
 
 static int add_packet(unsigned char * h80211,
-						   int caplen, int ch) {
+						   int caplen) {
   assert(h80211 && "packet is NULL");
 	size_t n;
 	unsigned char *p;
@@ -161,7 +161,6 @@ static int add_packet(unsigned char * h80211,
 		ap_cur->prev = ap_prv;
 		lopt.ap_end = ap_cur;
 		memset(ap_cur->essid, 0, ESSID_LENGTH + 1);
-		ap_cur->channel = ch;
 	}
 
 
@@ -184,6 +183,10 @@ static int add_packet(unsigned char * h80211,
 				memset(ap_cur->essid, 0, ESSID_LENGTH + 1);
 				memcpy(ap_cur->essid, p + 2, n);
 			}
+
+			// NEW MY CHANGE
+			if (p[0] == 0x03)
+				ap_cur->channel = p[2];
 
 			p += 2 + p[1];
 		}
@@ -330,8 +333,7 @@ static AP_info * launch(char const * Iface) {
 				perror("iface down");
 				break;
 			}
-			int ch = lopt.channel;
-			add_packet(h80211, caplen, ch);
+			add_packet(h80211, caplen);
 		}
 	}
   wi_close(wi);
