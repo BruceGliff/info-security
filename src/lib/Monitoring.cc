@@ -25,6 +25,7 @@ Monitor::Monitor() {
          "interface already in Monitor mode");
   m_Monitor = *m_PreferedIface + "mon";
   SetMonitor();
+  m_IsOn = true;
 }
 
 void Monitor::SelectPreferedIface() {
@@ -152,8 +153,7 @@ void Monitor::SetMonitor() const {
   }
 }
 
-Monitor::~Monitor() {
-  sleep(1);
+void Monitor::TurnOff() {
   pid_t pid = fork();
   if (pid == 0) {
     char const *params[] = {"iw",        "phy",     "phy0",
@@ -192,6 +192,14 @@ Monitor::~Monitor() {
   }
 
   SetIfaceUp(*m_PreferedIface);
+  m_IsOn = false;
+}
+
+
+Monitor::~Monitor() {
+  sleep(1);
+  if (m_IsOn)
+    TurnOff();
 }
 
 char const * Monitor::GetIface() const {

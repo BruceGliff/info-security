@@ -1,7 +1,5 @@
 #pragma once
 
-struct priv_linux;
-
 #define MAX_IFACE_NAME 64
 struct wif {
 	int (*wi_read)(struct wif * wi,

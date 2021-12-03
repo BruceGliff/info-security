@@ -378,7 +378,7 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 
 	time_t start = time(NULL);
 	time_t end = time(NULL);
-	time_t timing = 999999; // it is unlimited timer if there is no EAPOL data.
+	time_t timing = 30; // it is unlimited timer if there is no EAPOL data.
 	// MYWHILE
 	bool notF = true;
 	std::cout << "Scanning from: ";
