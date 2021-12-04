@@ -51,8 +51,7 @@ int Deauth::SendPacket(uint8_t const * stmac_in) {
 void sendP(char const * iface, uint8_t const * bssid_in, uint8_t const * stmac_in) {
   assert(stmac_in);
 
-  std::cout << "Sending deauth packets to: ";
-  print(stmac_in); std::cout << std::endl;
+  print(stmac_in); std::cout << "  -- Sending deauth packets\n";
 
   wif *wi = wi_open(iface);
   if (!wi) {
