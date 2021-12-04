@@ -7,6 +7,7 @@
 #include "sha.h"
 
 #include <iostream>
+#include <unistd.h>
 #include <array>
 #include <vector>
 #include <cassert>
@@ -63,6 +64,7 @@ void BruteForce::DoWPAHack() {
 }
 
 void BruteForce::CalcPKE() {
+  memset(m_pke, 0, sizeof(m_pke));
   uint8_t *pke = m_pke;
   uint8_t *stmac = m_CurrAp->wpa.stmac;
   uint8_t *bssid = m_CurrAp->bssid;
@@ -85,28 +87,28 @@ void BruteForce::CalcPKE() {
   }
 }
 
-bool BruteForce::CheckKey(std::string const & key) {
-
-  CalcPMK(key);
-
-
-  return true;
-}
-
 typedef struct
 {
 	union {
 		uint32_t v[8];
-		uint8_t c[32];
+		uint8_t c[40];
 	} data;
 } wpapsk_hash;
 
-void BruteForce::CalcPMK(std::string const & key) {
-  
+bool BruteForce::CheckKey(std::string const & key) {
+
   wpapsk_hash pmk;
+  memset(&pmk, 0, sizeof(pmk));
+  uint8_t ptk[160];
+  memset(ptk, 0, 160);
+  uint8_t mic[20];
+  memset(mic, 0, 20);
 
   calc_pmk((uint8_t*) key.data(), m_CurrAp->essid, strlen((char*)m_CurrAp->essid), (uint8_t*)&pmk);
+  calc_ptk((uint8_t*)&pmk, m_pke, ptk);
+  calc_mic(m_CurrAp->wpa.eapol, m_CurrAp->wpa.eapol_size, m_CurrAp->wpa.keyver, mic, ptk);
 
+  return memcmp(m_CurrAp->wpa.keymic, mic, 16) == 0;
 }
 
 void BruteForce::GetAPInfo() {
@@ -126,7 +128,6 @@ void BruteForce::GetAPInfo() {
     free(buffer);
     return;
   }
-
 
 	while (1) {
     if (m_CapFile.read((char*)&pkh, sizeof(pkh)).eof())
