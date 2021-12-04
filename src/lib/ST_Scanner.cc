@@ -65,8 +65,7 @@ void ST_Scanner::deauthentacating(uint8_t const * BSSID, char const * iface, loc
 			st = st->next;
 		
 		for (; new_st != sent; ++sent) {
-			std::cout << "Found new device: ";
-			print(st->stmac); std::cout << std::endl;
+			print(st->stmac); std::cout << "  -- Found new device\n";
 			sts.emplace_back(st->stmac);
 			st = st->next;
 		}
@@ -297,10 +296,8 @@ skip_station:
 			lopt.do_exit = 1;
 			if (!st_cur->eapol) {
 				st_cur->eapol = 1;
-				std::cout << "EAPOL found: ";
-				print(st_cur->stmac); std::cout << std::endl;
+				print(st_cur->stmac); std::cout << "  -- EAPOL found\n";
 			}
-
 		}
 	}
 
@@ -411,6 +408,7 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 	}
 
 	lopt.m_data.lock();
+	lopt.do_exit = 1;
   wi_close(wi);
   if (lopt.f_cap != NULL)
     fclose(lopt.f_cap);
@@ -426,7 +424,7 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 
 	st_cur = lopt.st_1st;
 
-	std::cout << "All stations: " << std::endl;
+	std::cout << "\nAll stations: " << std::endl;
 	while (st_cur != NULL) {
     print(st_cur->stmac);
 		if (st_cur->eapol)
@@ -437,6 +435,7 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 		free(st_cur);
 		st_cur = st_next;
 	}
+	std::cout << std::endl;
 
 	lopt.m_data.unlock();
 

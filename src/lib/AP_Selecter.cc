@@ -4,6 +4,7 @@
 #include <wif.h>
 
 #include <iostream>
+#include <iomanip>
 
 #include <cassert>
 #include <cstdlib>
@@ -41,7 +42,7 @@ AP_Selecter & AP_Selecter::ChooseAP() {
   bool isSelectBad = true;
   uint value {0};
   while (isSelectBad) {
-    std::cout << "\nEnter valid AcessPoint number: ";
+    std::cout << "\nEnter valid AcessPoint index: ";
     std::cin.clear();
     std::cin >> value;
 
@@ -58,8 +59,9 @@ AP_info_tiny const & AP_Selecter::GetPreferedAP() const {
 
 void AP_Selecter::PrintAPs() {
   int it = 0;
+	std::cout << " Idx  Chnl        BSSID             ESSID\n";
   for (auto && x : m_AP_Chain) {
-    std::cout << '[' << it++ << "] ";
+    std::cout << '[' << std::setw(3) << it++ << "] ";
     x.Print(); 
   }
 }
