@@ -63,44 +63,6 @@ static const struct ieee80211_radiotap_namespace radiotap_ns = {
 	.n_bits = sizeof(rtap_namespace_sizes) / sizeof(rtap_namespace_sizes[0])
 };
 
-/**
- * ieee80211_radiotap_iterator_init - radiotap parser iterator initialization
- * @iterator: radiotap_iterator to initialize
- * @radiotap_header: radiotap header to parse
- * @max_length: total length we can parse into (eg, whole packet length)
- *
- * Returns: 0 or a negative error code if there is a problem.
- *
- * This function initializes an opaque iterator struct which can then
- * be passed to ieee80211_radiotap_iterator_next() to visit every radiotap
- * argument which is present in the header.  It knows about extended
- * present headers and handles them.
- *
- * How to use:
- * call __ieee80211_radiotap_iterator_init() to init a semi-opaque iterator
- * struct ieee80211_radiotap_iterator (no need to init the struct beforehand)
- * checking for a good 0 return code.  Then loop calling
- * __ieee80211_radiotap_iterator_next()... it returns either 0,
- * -ENOENT if there are no more args to parse, or -EINVAL if there is a problem.
- * The iterator's @this_arg member points to the start of the argument
- * associated with the current argument index that is present, which can be
- * found in the iterator's @this_arg_index member.  This arg index corresponds
- * to the IEEE80211_RADIOTAP_... defines.
- *
- * Radiotap header length:
- * You can find the CPU-endian total radiotap header length in
- * iterator->max_length after executing ieee80211_radiotap_iterator_init()
- * successfully.
- *
- * Alignment Gotcha:
- * You must take care when dereferencing iterator.this_arg
- * for multibyte types... the pointer is not aligned.  Use
- * get_unaligned((type *)iterator.this_arg) to dereference
- * iterator.this_arg for type "type" safely on all arches.
- *
- * Example code: parse.c
- */
-
 EXPORT
 int ieee80211_radiotap_iterator_init(
 	struct ieee80211_radiotap_iterator *iterator,
@@ -203,53 +165,6 @@ static void find_ns(struct ieee80211_radiotap_iterator *iterator,
 	}
 }
 
-#ifdef RADIOTAP_SUPPORT_OVERRIDES
-static int find_override(struct ieee80211_radiotap_iterator *iterator,
-			 int *align, int *size)
-{
-	int i;
-
-	if (!iterator->overrides)
-		return 0;
-
-	for (i = 0; i < iterator->n_overrides; i++) {
-		if (iterator->_arg_index == iterator->overrides[i].field) {
-			*align = iterator->overrides[i].align;
-			*size = iterator->overrides[i].size;
-			if (!*align) /* erroneous override */
-				return 0;
-			return 1;
-		}
-	}
-
-	return 0;
-}
-#endif
-
-
-/**
- * ieee80211_radiotap_iterator_next - return next radiotap parser iterator arg
- * @iterator: radiotap_iterator to move to next arg (if any)
- *
- * Returns: 0 if there is an argument to handle,
- * -ENOENT if there are no more args or -EINVAL
- * if there is something else wrong.
- *
- * This function provides the next radiotap arg index (IEEE80211_RADIOTAP_*)
- * in @this_arg_index and sets @this_arg to point to the
- * payload for the field.  It takes care of alignment handling and extended
- * present fields.  @this_arg can be changed by the caller (eg,
- * incremented to move inside a compound argument like
- * IEEE80211_RADIOTAP_CHANNEL).  The args pointed to are in
- * little-endian format whatever the endianness of your CPU.
- *
- * Alignment Gotcha:
- * You must take care when dereferencing iterator.this_arg
- * for multibyte types... the pointer is not aligned.  Use
- * get_unaligned((type *)iterator.this_arg) to dereference
- * iterator.this_arg for type "type" safely on all arches.
- */
-
 EXPORT
 int ieee80211_radiotap_iterator_next(
 	struct ieee80211_radiotap_iterator *iterator)
@@ -303,17 +218,6 @@ int ieee80211_radiotap_iterator_next(
 			break;
 		}
 
-		/*
-		 * arg is present, account for alignment padding
-		 *
-		 * Note that these alignments are relative to the start
-		 * of the radiotap header.  There is no guarantee
-		 * that the radiotap header itself is aligned on any
-		 * kind of boundary.
-		 *
-		 * The above is why get_unaligned() is used to dereference
-		 * multibyte elements from the radiotap area.
-		 */
 
 		pad = ((unsigned long)iterator->_arg -
 		       (unsigned long)iterator->_rtheader) & (align - 1);
@@ -342,23 +246,13 @@ int ieee80211_radiotap_iterator_next(
 				size += vnslen;
 		}
 
-		/*
-		 * this is what we will return to user, but we need to
-		 * move on first so next call has something fresh to test
-		 */
+
 		iterator->this_arg_index = iterator->_arg_index;
 		iterator->this_arg = iterator->_arg;
 		iterator->this_arg_size = size;
 
 		/* internally move on the size of this arg */
 		iterator->_arg += size;
-
-		/*
-		 * check for insanity where we are given a bitmap that
-		 * claims to have more arg content than the length of the
-		 * radiotap section.  We will normally end up equalling this
-		 * max_length on the last arg, never exceeding it.
-		 */
 
 		if ((unsigned long)iterator->_arg -
 		    (unsigned long)iterator->_rtheader >
@@ -371,12 +265,7 @@ int ieee80211_radiotap_iterator_next(
 			iterator->_reset_on_ext = 1;
 
 			iterator->is_radiotap_ns = 0;
-			/*
-			 * If parser didn't register this vendor
-			 * namespace with us, allow it to show it
-			 * as 'raw. Do do that, set argument index
-			 * to vendor namespace.
-			 */
+
 			iterator->this_arg_index =
 				IEEE80211_RADIOTAP_VENDOR_NAMESPACE;
 			if (!iterator->current_namespace)

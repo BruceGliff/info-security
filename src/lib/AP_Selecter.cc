@@ -338,20 +338,3 @@ static AP_info * launch(char const * Iface) {
 
 	return lopt.ap_1st;
 }
-
-// static void printAP() {
-// 	FILE * f = fopen("st.out", "w");
-// 	if (!f) {
-// 		perror("st.out");
-// 		exit(-1);
-// 	}
-// 	AP_info * ap_curr = lopt.ap_1st;
-// 	while (ap_curr) {
-// 		for (int i = 0; i != 5; ++i)
-// 			fprintf(f, "%02x:", ap_curr->bssid[i]);
-// 		fprintf(f, "%02x   %s\n", ap_curr->bssid[5], ap_curr->essid);
-// 		ap_curr = ap_curr->next;
-// 	}
-// 	fprintf(f, "\n");
-// 	fclose(f);
-// }

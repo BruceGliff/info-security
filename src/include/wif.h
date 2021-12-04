@@ -29,5 +29,3 @@ int wi_read(struct wif * wi,
 int wi_set_channel(struct wif * wi, int chan);
 void wi_close(struct wif * wi);
 char const * wi_get_ifname(struct wif * wi);
-
-
