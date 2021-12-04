@@ -35,6 +35,7 @@ class BruteForce {
   void GetAPInfo();
   void DoWPAHack();
   void CalcPKE();
+  void CalcPMK(std::string const &);
   bool CheckKey(std::string const &);
   bool GetNextKey(std::string &);
   void ProcessPacket(uint8_t * h80211, pcap_pkthdr const &);
