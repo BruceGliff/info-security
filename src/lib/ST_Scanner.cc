@@ -297,7 +297,7 @@ skip_station:
 			lopt.do_exit = 1;
 			if (!st_cur->eapol) {
 				st_cur->eapol = 1;
-				std::cout << "EAPOL founded: ";
+				std::cout << "EAPOL found: ";
 				print(st_cur->stmac); std::cout << std::endl;
 			}
 

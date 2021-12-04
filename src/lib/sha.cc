@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <cassert>
+#include <unistd.h>
 #include <arpa/inet.h>
 
 struct SHA_CTX {
@@ -279,10 +280,6 @@ void SHA1_Final(unsigned char hashout[20], SHA_CTX * ctx) {
 	put_be32(&hashout[16], ctx->h4);
 }
 
-
-
-
-
 void calc_pmk(uint8_t const * key, uint8_t const * essid_pre, uint32_t essid_pre_len, uint8_t pmk[40]) {
 	int i, j, slen;
 	unsigned char buffer[65];
@@ -291,9 +288,8 @@ void calc_pmk(uint8_t const * key, uint8_t const * essid_pre, uint32_t essid_pre
 	SHA_CTX ctx_opad;
 	SHA_CTX sha1_ctx;
 
-	if (essid_pre_len > 32) {
+	if (essid_pre_len > 32)
 		essid_pre_len = 32;
-	}
 
 	memset(essid, 0, sizeof(essid));
 	memcpy(essid, essid_pre, essid_pre_len);
@@ -359,4 +355,38 @@ void calc_pmk(uint8_t const * key, uint8_t const * essid_pre, uint32_t essid_pre
 
 		for (j = 0; j < 20; j++) pmk[j + 20] ^= buffer[j];
 	}
+}
+
+void calc_ptk(uint8_t * pmk, uint8_t * pke, uint8_t * ptk) {
+  for (int i = 0; i < 4; i++) {
+    *(pke + 99) = (unsigned char) i;
+    HMAC(EVP_sha1(),
+				 (pmk),
+				 32,
+				 pke,
+				 100,
+				 ptk + i * 20,
+				 NULL);
+  }
+}
+
+void calc_mic(uint8_t * eapol, uint32_t eapol_size, uint8_t keyver, uint8_t * mic, uint8_t * ptk) {
+  if (keyver == 1)
+    HMAC(EVP_md5(),
+        ptk,
+        16,
+        eapol,
+        eapol_size,
+        mic,
+        NULL);
+  else if (keyver == 2)
+    HMAC(EVP_sha1(),
+        ptk,
+        16,
+        eapol,
+        eapol_size,
+        mic,
+        NULL);
+  else 
+    assert(0 && "unsupported type of keyver");
 }
