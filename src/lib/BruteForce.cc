@@ -4,6 +4,8 @@
 #include <pcap.h>
 #include <ieee80211_def.h>
 
+#include "sha.h"
+
 #include <iostream>
 #include <array>
 #include <vector>
@@ -85,8 +87,26 @@ void BruteForce::CalcPKE() {
 
 bool BruteForce::CheckKey(std::string const & key) {
 
+  CalcPMK(key);
+
 
   return true;
+}
+
+typedef struct
+{
+	union {
+		uint32_t v[8];
+		uint8_t c[32];
+	} data;
+} wpapsk_hash;
+
+void BruteForce::CalcPMK(std::string const & key) {
+  
+  wpapsk_hash pmk;
+
+  calc_pmk((uint8_t*) key.data(), m_CurrAp->essid, strlen((char*)m_CurrAp->essid), (uint8_t*)&pmk);
+
 }
 
 void BruteForce::GetAPInfo() {
