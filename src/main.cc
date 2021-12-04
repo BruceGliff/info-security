@@ -3,6 +3,7 @@
 #include <Monitoring.h>
 #include <AP_Selecter.h>
 #include <ST_Scanner.h>
+#include <BruteForce.h>
 #include <path.h>
 
 int main(int argc, char *argv[]) {
@@ -11,8 +12,8 @@ int main(int argc, char *argv[]) {
   Monitor m{};
   AP_Selecter ap{m.GetIface()};
   ST_Scanner st{bin_path, ap.ChooseAP().GetPreferedAP(), m.GetIface()};
-  // BruteForce bf{ap.GetPreferedAP().bssid};
-  
+  BruteForce bf{bin_path, ap.GetPreferedAP().bssid};
+  // BruteForce bf{bin_path, bssid};
 
   return 0;
 }

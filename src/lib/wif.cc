@@ -472,11 +472,8 @@ static int openraw(struct priv_linux * dev, char const * iface, int fd, int * ar
 static int linux_write(struct wif * wi, struct timespec * ts, int dlt, unsigned char * buf, int count, struct tx_info * ti)
 {
 	struct priv_linux * dev = wi_priv(wi);
-	unsigned char maddr[6];
-	int ret, usedrtap = 0;
 	unsigned char tmpbuf[4096];
 	unsigned char rate;
-	unsigned short int * p_rtlen;
 
 	unsigned char u8aRadiotap[] __attribute__((aligned(8))) = {
 		0x00,
@@ -494,7 +491,6 @@ static int linux_write(struct wif * wi, struct timespec * ts, int dlt, unsigned 
 	};
 
 	/* Pointer to the radiotap header length field for later use. */
-	p_rtlen = (unsigned short int *) (u8aRadiotap + 2); //-V1032
 
 	if ((unsigned) count > sizeof(tmpbuf) - 22) return -1;
 
@@ -515,9 +511,8 @@ static int linux_write(struct wif * wi, struct timespec * ts, int dlt, unsigned 
 	count += sizeof(u8aRadiotap);
 
 	buf = tmpbuf;
-	usedrtap = 1;
 
-	ret = write(dev->fd_out, buf, count);
+	int ret = write(dev->fd_out, buf, count);
 
 	if (ret < 0)
 	{

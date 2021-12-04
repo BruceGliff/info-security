@@ -24,14 +24,13 @@ static void print(uint8_t const * in) {
 
 ST_Scanner::ST_Scanner(path const & bin, AP_info_tiny const &AP, char const * Iface)
   : m_lopt{}
-	, m_Scanner{scanning, AP.bssid, AP.channel, Iface, std::ref(m_lopt)}
-	, m_Deauth{deauthentacating, AP.bssid, Iface, std::ref(m_lopt), std::ref(bin)}
-{}
-
-ST_Scanner::~ST_Scanner() {
-  m_Scanner.join();
+	, m_Scanner{scanning, AP.bssid, AP.channel, Iface, std::ref(m_lopt), std::ref(bin)}
+	, m_Deauth{deauthentacating, AP.bssid, Iface, std::ref(m_lopt), std::ref(bin)} {
+	m_Scanner.join();
 	m_Deauth.join();
 }
+
+ST_Scanner::~ST_Scanner() {}
 
 ST_info_tiny::ST_info_tiny(uint8_t const * stmac_in) {
   memcpy(stmac, stmac_in, sizeof(stmac));
@@ -92,29 +91,14 @@ void ST_Scanner::deauthentacating(uint8_t const * BSSID, char const * iface, loc
 	}
 }
 
-// TODO specify path
-static FILE *initCapFile(/*char const * prefix*/) {
-  //assert(prefix && strlen(prefix) > 0);
-  char const * prefix = "";
-	const size_t ADDED_LENGTH = 8;
-  // prefix is the relative path
-
-	size_t ofn_len = strlen(prefix) + ADDED_LENGTH + 1; // full path
-	char * ofn = (char *) calloc(1, ofn_len);
-	assert(ofn);
+static FILE *initCapFile(path const & bin) {
 
   struct pcap_file_header pfh;
 
-  memset(ofn, 0, ofn_len);
-  snprintf(ofn,
-        ofn_len,
-        "%sdump.cap",
-        prefix); // generate full path
-  FILE *f_cap = fopen(ofn, "wb+");
+  FILE *f_cap = fopen( path{bin + "Dump.cap"}.getRaw(), "wb+");
   if (!f_cap) {
     perror("fopen failed");
-    fprintf(stderr, "Could not create \"%s\".\n", ofn);
-    free(ofn);
+    fprintf(stderr, "Could not create \"%s\".\n", path{bin + "Dump.cap"}.getRaw());
 
     return nullptr;
   }
@@ -129,10 +113,9 @@ static FILE *initCapFile(/*char const * prefix*/) {
 
   if (fwrite(&pfh, 1, sizeof(pfh), f_cap) != (size_t) sizeof(pfh)) {
     perror("fwrite(pcap file header) failed");
-    free(ofn);
     return nullptr;
   }
-  free(ofn);
+
 	return f_cap;
 }
 
@@ -344,7 +327,7 @@ write_packet:
 	return (0);
 }
 
-void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface, local_options & lopt) {
+void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface, local_options & lopt, path const & bin) {
 	
 	int caplen = 0, fdh;
 	struct AP_info *ap_cur, *ap_next;
@@ -362,7 +345,7 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
   lopt.channel = Ch;
   lopt.s_iface = Iface;
   memcpy(lopt.f_bssid, BSSID, 6);
-  lopt.f_cap = initCapFile();
+  lopt.f_cap = initCapFile(bin);
 	lopt.m_data.unlock();
 
   wif * wi = wi_open(lopt.s_iface);
