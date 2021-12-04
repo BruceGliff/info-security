@@ -39,6 +39,16 @@ bool BruteForce::GetNextKey(std::string & key) {
 void BruteForce::DoWPAHack() {
   GetAPInfo();
 
+  if (!m_CurrAp || memcmp(m_CurrAp->essid, ZERO, ESSID_LENGTH) == 0) {
+    std::cerr << "AP processed with errors!\n";
+    return;
+  }
+  if (m_CurrAp->wpa.state != 7) {
+    std::cerr << "Hack requires full handshake\n";
+    return;
+  }
+  CalcPKE();
+
   std::string key;
   bool IsHacked {false};
   while (!IsHacked && GetNextKey(key))
@@ -50,7 +60,32 @@ void BruteForce::DoWPAHack() {
     std::cout << "No key\n";
 }
 
+void BruteForce::CalcPKE() {
+  uint8_t *pke = m_pke;
+  uint8_t *stmac = m_CurrAp->wpa.stmac;
+  uint8_t *bssid = m_CurrAp->bssid;
+  uint8_t *snonce = m_CurrAp->wpa.snonce;
+  uint8_t *anonce = m_CurrAp->wpa.anonce;
+  memcpy(pke, "Pairwise key expansion", 23);
+	if (memcmp(stmac, bssid, 6) < 0) {
+		memcpy(pke + 23, stmac, 6);
+		memcpy(pke + 29, bssid, 6);
+	} else {
+		memcpy(pke + 23, bssid, 6);
+		memcpy(pke + 29, stmac, 6);
+	}
+	if (memcmp(snonce, anonce, 32) < 0) {
+		memcpy(pke + 35, snonce, 32);
+		memcpy(pke + 67, anonce, 32);
+	} else {
+		memcpy(pke + 35, anonce, 32);
+		memcpy(pke + 67, snonce, 32);
+  }
+}
+
 bool BruteForce::CheckKey(std::string const & key) {
+
+
   return true;
 }
 
