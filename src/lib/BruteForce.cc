@@ -37,7 +37,6 @@ bool BruteForce::GetNextKey(std::string & key) {
 }
 
 void BruteForce::DoWPAHack() {
-
   GetAPInfo();
 
   std::string key;
@@ -75,10 +74,10 @@ void BruteForce::GetAPInfo() {
 
 
 	while (1) {
-    if (!m_CapFile.read((char*)&pkh, sizeof(pkh)).eof())
+    if (m_CapFile.read((char*)&pkh, sizeof(pkh)).eof())
       break;
 
-    if (!m_CapFile.read((char*)buffer, pkh.caplen).eof())
+    if (m_CapFile.read((char*)buffer, pkh.caplen).eof())
       break;
 
     ProcessPacket(buffer, pkh);
@@ -168,8 +167,9 @@ void BruteForce::Update_APInfo(uint8_t * h80211, pcap_pkthdr const & pkh) {
       memset(st_cur, 0, sizeof(ST_info));
 
       memcpy(st_cur->stmac, stmac, sizeof(st_cur->stmac));
-      auto [FindIt, IsEmplace] = m_Stations.emplace(stmac, st_cur);
+      auto [It, IsEmplace] = m_Stations.emplace(stmac, st_cur);
       assert(IsEmplace && "Station has been replaced!");
+      FindIt = It;
     }
     st_cur = FindIt->second;
   }
