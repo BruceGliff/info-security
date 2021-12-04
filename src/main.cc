@@ -1,10 +1,13 @@
 #include <iostream>
 
-#include <monitoring.h>
+#include <Monitoring.h>
+#include <AP_Selecter.h>
 
-int main(int argc, char *arhv[]) {
+int main(int argc, char *argv[]) {
 
-  monitor m{};
+  Monitor m{};
+  AP_Selecter ap{m.GetIface()};
+  ap.ChooseAP();
 
   return 0;
 }
