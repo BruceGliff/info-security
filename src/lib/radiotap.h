@@ -2,10 +2,52 @@
 
 #include <stdint.h>
 
+<<<<<<< HEAD
 struct ieee80211_radiotap_header {
 	uint8_t it_version;
 	uint8_t it_pad;
 	uint16_t it_len;
+=======
+#if defined(__APPLE__)
+#include <libkern/OSByteOrder.h>
+#define bswap_16 OSSwapInt16
+#define bswap_32 OSSwapInt32
+#define bswap_64 OSSwapInt64
+#include <machine/endian.h>
+#ifndef le16toh
+#define le16toh(x) OSSwapLittleToHostInt16(x)
+#endif
+#ifndef le32toh
+#define le32toh(x) OSSwapLittleToHostInt32(x)
+#endif
+#ifndef le64toh
+#define le64toh(x) OSSwapLittleToHostInt64(x)
+#endif
+#endif
+
+/**
+ * struct ieee82011_radiotap_header - base radiotap header
+ */
+struct ieee80211_radiotap_header {
+	/**
+	 * @it_version: radiotap version, always 0
+	 */
+	uint8_t it_version;
+
+	/**
+	 * @it_pad: padding (or alignment)
+	 */
+	uint8_t it_pad;
+
+	/**
+	 * @it_len: overall radiotap header length
+	 */
+	uint16_t it_len;
+
+	/**
+	 * @it_present: (first) present word
+	 */
+>>>>>>> 6486
 	uint32_t it_present;
 } __attribute__((__packed__));
 
@@ -46,6 +88,10 @@ enum ieee80211_radiotap_presence {
 	IEEE80211_RADIOTAP_EXT = 31
 };
 
+<<<<<<< HEAD
+=======
+/* for IEEE80211_RADIOTAP_FLAGS */
+>>>>>>> 6486
 enum ieee80211_radiotap_flags {
 	IEEE80211_RADIOTAP_F_CFP = 0x01,
 	IEEE80211_RADIOTAP_F_SHORTPRE = 0x02,
@@ -56,6 +102,10 @@ enum ieee80211_radiotap_flags {
 	IEEE80211_RADIOTAP_F_BADFCS = 0x40,
 };
 
+<<<<<<< HEAD
+=======
+/* for IEEE80211_RADIOTAP_CHANNEL */
+>>>>>>> 6486
 enum ieee80211_radiotap_channel_flags {
 	IEEE80211_CHAN_CCK = 0x0020,
 	IEEE80211_CHAN_OFDM = 0x0040,
@@ -66,10 +116,18 @@ enum ieee80211_radiotap_channel_flags {
 	IEEE80211_CHAN_QUARTER = 0x8000,
 };
 
+<<<<<<< HEAD
+=======
+/* for IEEE80211_RADIOTAP_RX_FLAGS */
+>>>>>>> 6486
 enum ieee80211_radiotap_rx_flags {
 	IEEE80211_RADIOTAP_F_RX_BADPLCP = 0x0002,
 };
 
+<<<<<<< HEAD
+=======
+/* for IEEE80211_RADIOTAP_TX_FLAGS */
+>>>>>>> 6486
 enum ieee80211_radiotap_tx_flags {
 	IEEE80211_RADIOTAP_F_TX_FAIL = 0x0001,
 	IEEE80211_RADIOTAP_F_TX_CTS = 0x0002,
@@ -77,6 +135,10 @@ enum ieee80211_radiotap_tx_flags {
 	IEEE80211_RADIOTAP_F_TX_NOACK = 0x0008,
 };
 
+<<<<<<< HEAD
+=======
+/* for IEEE80211_RADIOTAP_MCS "have" flags */
+>>>>>>> 6486
 enum ieee80211_radiotap_mcs_have {
 	IEEE80211_RADIOTAP_MCS_HAVE_BW = 0x01,
 	IEEE80211_RADIOTAP_MCS_HAVE_MCS = 0x02,
@@ -103,6 +165,10 @@ enum ieee80211_radiotap_mcs_flags {
 	IEEE80211_RADIOTAP_MCS_STBC_SHIFT = 5,
 };
 
+<<<<<<< HEAD
+=======
+/* for IEEE80211_RADIOTAP_AMPDU_STATUS */
+>>>>>>> 6486
 enum ieee80211_radiotap_ampdu_flags {
 	IEEE80211_RADIOTAP_AMPDU_REPORT_ZEROLEN = 0x0001,
 	IEEE80211_RADIOTAP_AMPDU_IS_ZEROLEN = 0x0002,
@@ -112,6 +178,10 @@ enum ieee80211_radiotap_ampdu_flags {
 	IEEE80211_RADIOTAP_AMPDU_DELIM_CRC_KNOWN = 0x0020,
 };
 
+<<<<<<< HEAD
+=======
+/* for IEEE80211_RADIOTAP_VHT */
+>>>>>>> 6486
 enum ieee80211_radiotap_vht_known {
 	IEEE80211_RADIOTAP_VHT_KNOWN_STBC = 0x0001,
 	IEEE80211_RADIOTAP_VHT_KNOWN_TXOP_PS_NA = 0x0002,

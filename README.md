@@ -1,8 +1,12 @@
 # info-security
+<<<<<<< HEAD
 A tool to test router for attack resistance.
 | :exclamation: Disclaimer |
 |-|
 |This program is for informational puproses only.<br />If you know how these attacks work then you better defender against them.<br />Do not try this on any system that you do not own or have permission to do so.|
+=======
+A tool to test router for attack resistance
+>>>>>>> 6486
 
 Build: cmake\
 Launch: ./netcracker

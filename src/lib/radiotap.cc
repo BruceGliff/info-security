@@ -246,7 +246,6 @@ int ieee80211_radiotap_iterator_next(
 				size += vnslen;
 		}
 
-
 		iterator->this_arg_index = iterator->_arg_index;
 		iterator->this_arg = iterator->_arg;
 		iterator->this_arg_size = size;
@@ -265,7 +264,6 @@ int ieee80211_radiotap_iterator_next(
 			iterator->_reset_on_ext = 1;
 
 			iterator->is_radiotap_ns = 0;
-
 			iterator->this_arg_index =
 				IEEE80211_RADIOTAP_VENDOR_NAMESPACE;
 			if (!iterator->current_namespace)
