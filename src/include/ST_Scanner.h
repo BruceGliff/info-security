@@ -53,7 +53,7 @@ class ST_Scanner {
   std::thread m_Scanner;
   std::thread m_Deauth;
 
-  static void scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface, local_options & lopt);
+  static void scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface, local_options & lopt, path const & bin);
   static void deauthentacating(uint8_t const * BSSID, char const * iface, local_options & lopt, path const & bin);
 
 public:
@@ -65,5 +65,4 @@ public:
   
   ST_Scanner(path const & bin, AP_info_tiny const &AP, char const * Iface);
   ~ST_Scanner();
-
 };

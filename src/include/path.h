@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ostream>
+
 class path {
 
   char * m_path{nullptr};
@@ -19,4 +21,5 @@ public:
   path & operator+=(path const & postfix);
 };
 
+std::ostream & operator<<(std::ostream & os, path const & p);
 path operator+(path const & prefix, char const * postfix);

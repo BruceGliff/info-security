@@ -57,3 +57,8 @@ path & path::operator+=(path const & postfix) {
 path operator+(path const & prefix, char const * postfix) {
   return path{prefix}+=path{postfix};  
 }
+
+std::ostream & operator<<(std::ostream & os, path const & p) {
+  os << p.getRaw();
+  return os;
+}

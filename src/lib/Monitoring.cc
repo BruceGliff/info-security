@@ -25,18 +25,19 @@ Monitor::Monitor() {
          "interface already in Monitor mode");
   m_Monitor = *m_PreferedIface + "mon";
   SetMonitor();
+  m_IsOn = true;
 }
 
 void Monitor::SelectPreferedIface() {
   assert(m_Ifaces.size() && "no available interfaces.");
+  std::cout << " Iface idx | Iface name\n";
   for (unsigned i = 0, e = m_Ifaces.size(); i != e; ++i) {
-    std::cout << i << "  " << m_Ifaces.at(i) << std::endl;
+    std::cout << "    [" <<  i << "]    |    " << m_Ifaces.at(i) << std::endl;
   }
-  std::cout << "Select prefered interface.";
   bool isSelectBad = true;
   unsigned value {0};
   while (isSelectBad) {
-    std::cout << "\nEnter interface number: ";
+    std::cout << "\nEnter interface index: ";
     std::cin.clear();
     std::cin >> value;
     isSelectBad = !(value < m_Ifaces.size());
@@ -152,8 +153,7 @@ void Monitor::SetMonitor() const {
   }
 }
 
-Monitor::~Monitor() {
-  sleep(1);
+void Monitor::TurnOff() {
   pid_t pid = fork();
   if (pid == 0) {
     char const *params[] = {"iw",        "phy",     "phy0",
@@ -167,12 +167,6 @@ Monitor::~Monitor() {
   assert(pid && "fork failed");
   int ret{99};
   wait(&ret);
-
-  // WARN it returns 9!
-  // if (ret != 0) {
-  //   std::cerr << "1 everything is broken!\n";
-  //   exit(-1);
-  // }
 
   SetIfaceDown(m_Monitor);
   // Deleting iface
@@ -192,6 +186,14 @@ Monitor::~Monitor() {
   }
 
   SetIfaceUp(*m_PreferedIface);
+  m_IsOn = false;
+}
+
+
+Monitor::~Monitor() {
+  sleep(1);
+  if (m_IsOn)
+    TurnOff();
 }
 
 char const * Monitor::GetIface() const {

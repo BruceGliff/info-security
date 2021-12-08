@@ -24,14 +24,13 @@ static void print(uint8_t const * in) {
 
 ST_Scanner::ST_Scanner(path const & bin, AP_info_tiny const &AP, char const * Iface)
   : m_lopt{}
-	, m_Scanner{scanning, AP.bssid, AP.channel, Iface, std::ref(m_lopt)}
-	, m_Deauth{deauthentacating, AP.bssid, Iface, std::ref(m_lopt), std::ref(bin)}
-{}
-
-ST_Scanner::~ST_Scanner() {
-  m_Scanner.join();
+	, m_Scanner{scanning, AP.bssid, AP.channel, Iface, std::ref(m_lopt), std::ref(bin)}
+	, m_Deauth{deauthentacating, AP.bssid, Iface, std::ref(m_lopt), std::ref(bin)} {
+	m_Scanner.join();
 	m_Deauth.join();
 }
+
+ST_Scanner::~ST_Scanner() {}
 
 ST_info_tiny::ST_info_tiny(uint8_t const * stmac_in) {
   memcpy(stmac, stmac_in, sizeof(stmac));
@@ -66,8 +65,7 @@ void ST_Scanner::deauthentacating(uint8_t const * BSSID, char const * iface, loc
 			st = st->next;
 		
 		for (; new_st != sent; ++sent) {
-			std::cout << "Found new device: ";
-			print(st->stmac); std::cout << std::endl;
+			print(st->stmac); std::cout << "  -- Found new device\n";
 			sts.emplace_back(st->stmac);
 			st = st->next;
 		}
@@ -92,29 +90,14 @@ void ST_Scanner::deauthentacating(uint8_t const * BSSID, char const * iface, loc
 	}
 }
 
-// TODO specify path
-static FILE *initCapFile(/*char const * prefix*/) {
-  //assert(prefix && strlen(prefix) > 0);
-  char const * prefix = "";
-	const size_t ADDED_LENGTH = 8;
-  // prefix is the relative path
-
-	size_t ofn_len = strlen(prefix) + ADDED_LENGTH + 1; // full path
-	char * ofn = (char *) calloc(1, ofn_len);
-	assert(ofn);
+static FILE *initCapFile(path const & bin) {
 
   struct pcap_file_header pfh;
 
-  memset(ofn, 0, ofn_len);
-  snprintf(ofn,
-        ofn_len,
-        "%sdump.cap",
-        prefix); // generate full path
-  FILE *f_cap = fopen(ofn, "wb+");
+  FILE *f_cap = fopen( path{bin + "Dump.cap"}.getRaw(), "wb+");
   if (!f_cap) {
     perror("fopen failed");
-    fprintf(stderr, "Could not create \"%s\".\n", ofn);
-    free(ofn);
+    fprintf(stderr, "Could not create \"%s\".\n", path{bin + "Dump.cap"}.getRaw());
 
     return nullptr;
   }
@@ -129,10 +112,9 @@ static FILE *initCapFile(/*char const * prefix*/) {
 
   if (fwrite(&pfh, 1, sizeof(pfh), f_cap) != (size_t) sizeof(pfh)) {
     perror("fwrite(pcap file header) failed");
-    free(ofn);
     return nullptr;
   }
-  free(ofn);
+
 	return f_cap;
 }
 
@@ -314,10 +296,8 @@ skip_station:
 			lopt.do_exit = 1;
 			if (!st_cur->eapol) {
 				st_cur->eapol = 1;
-				std::cout << "EAPOL founded: ";
-				print(st_cur->stmac); std::cout << std::endl;
+				print(st_cur->stmac); std::cout << "  -- EAPOL found\n";
 			}
-
 		}
 	}
 
@@ -344,7 +324,7 @@ write_packet:
 	return (0);
 }
 
-void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface, local_options & lopt) {
+void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface, local_options & lopt, path const & bin) {
 	
 	int caplen = 0, fdh;
 	struct AP_info *ap_cur, *ap_next;
@@ -362,7 +342,7 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
   lopt.channel = Ch;
   lopt.s_iface = Iface;
   memcpy(lopt.f_bssid, BSSID, 6);
-  lopt.f_cap = initCapFile();
+  lopt.f_cap = initCapFile(bin);
 	lopt.m_data.unlock();
 
   wif * wi = wi_open(lopt.s_iface);
@@ -378,7 +358,7 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 
 	time_t start = time(NULL);
 	time_t end = time(NULL);
-	time_t timing = 999999; // it is unlimited timer if there is no EAPOL data.
+	time_t timing = 30; // it is unlimited timer if there is no EAPOL data.
 	// MYWHILE
 	bool notF = true;
 	std::cout << "Scanning from: ";
@@ -428,6 +408,7 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 	}
 
 	lopt.m_data.lock();
+	lopt.do_exit = 1;
   wi_close(wi);
   if (lopt.f_cap != NULL)
     fclose(lopt.f_cap);
@@ -443,7 +424,7 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 
 	st_cur = lopt.st_1st;
 
-	std::cout << "All stations: " << std::endl;
+	std::cout << "\nAll stations: " << std::endl;
 	while (st_cur != NULL) {
     print(st_cur->stmac);
 		if (st_cur->eapol)
@@ -454,6 +435,7 @@ void ST_Scanner::scanning(uint8_t const * BSSID, uint32_t Ch, char const * Iface
 		free(st_cur);
 		st_cur = st_next;
 	}
+	std::cout << std::endl;
 
 	lopt.m_data.unlock();
 

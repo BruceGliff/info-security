@@ -8,6 +8,7 @@ class Monitor {
   std::vector<std::string> m_Ifaces{};
   std::vector<std::string>::const_iterator m_PreferedIface{};
   std::string m_Monitor{};
+  bool m_IsOn {false};
 
   void SelectPreferedIface();
   bool CheckIfaceForValue(std::string const &iface, int value) const;
@@ -27,4 +28,5 @@ public:
   ~Monitor();
 
   char const * GetIface() const;
+  void TurnOff();
 };
