@@ -1,13 +1,13 @@
 #Project building
 
 
-set(PROJECT_NAME netcracker)
+set(PROJECT_NAME deauth)
 project(${PROJECT_NAME})
 
-file(GLOB_RECURSE SRC_FILES lib/*.cc)
+file(GLOB_RECURSE SRC_FILES ../src/lib/*.cc)
 add_executable(${PROJECT_NAME} main.cc ${SRC_FILES})
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../src/include)
 target_include_directories(${PROJECT_NAME} PUBLIC /usr/include/libnl3)
 
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -O2 -g )

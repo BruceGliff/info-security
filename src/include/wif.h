@@ -10,6 +10,12 @@ struct wif {
 				   unsigned char * h80211,
 				   int len,
 				   struct rx_info * ri);
+	int (*wi_write)(struct wif * wi,
+					struct timespec * ts,
+					int dlt,
+					unsigned char * h80211,
+					int len,
+					struct tx_info * ti);
 	int (*wi_set_channel)(struct wif * wi, int chan);
 	void (*wi_close)(struct wif * wi);
 	int (*wi_fd)(struct wif * wi);
