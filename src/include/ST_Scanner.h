@@ -65,5 +65,4 @@ public:
   
   ST_Scanner(path const & bin, AP_info_tiny const &AP, char const * Iface);
   ~ST_Scanner();
-
 };
