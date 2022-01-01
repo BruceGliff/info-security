@@ -40,7 +40,8 @@ int Deauth::SendPacket(uint8_t const * stmac_in) {
     uint8_t bs[6];
     memcpy(st, stmac_in, 6);
     memcpy(bs, bssid, 6);
-    sendP("wlan0mon", bs, st);
+    printf("May be broken!\nIface: %s\n", iface);
+    sendP(iface, bs, st);
     exit(0);
   }
   waitpid(pid, NULL, 0);
